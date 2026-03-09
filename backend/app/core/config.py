@@ -1,8 +1,10 @@
 from functools import lru_cache
+import json
 from typing import Any
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -29,16 +31,29 @@ class Settings(BaseSettings):
     default_city: str = "Baku"
     default_timezone: str = "Asia/Baku"
 
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, value: Any) -> list[str]:
-        if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        if value is None:
+            return []
         if isinstance(value, list):
-            return value
-        return ["http://localhost:3000"]
+            return [str(origin).strip() for origin in value if str(origin).strip()]
+        if isinstance(value, str):
+            raw = value.strip()
+            if raw == "":
+                return []
+            if raw.startswith("["):
+                try:
+                    parsed = json.loads(raw)
+                except json.JSONDecodeError as exc:
+                    raise ValueError("Invalid JSON array for cors_origins.") from exc
+                if not isinstance(parsed, list):
+                    raise ValueError("cors_origins JSON value must be an array.")
+                return [str(origin).strip() for origin in parsed if str(origin).strip()]
+            return [origin.strip() for origin in raw.split(",") if origin.strip()]
+        raise ValueError("Unsupported value for cors_origins.")
 
     @property
     def resolved_celery_broker_url(self) -> str:
