@@ -8,3 +8,4 @@ __pycache__/
 .env
 alembic/__pycache__/
 htmlcov/
+celerybeat-schedule*

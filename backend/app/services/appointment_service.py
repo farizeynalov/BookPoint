@@ -11,6 +11,11 @@ from app.repositories.organization_repository import OrganizationRepository
 from app.repositories.provider_repository import ProviderRepository
 from app.repositories.service_repository import ServiceRepository
 from app.schemas.appointment import AppointmentCreate
+from app.services.notifications.dispatcher import (
+    enqueue_appointment_cancelled_notification,
+    enqueue_appointment_created_notification,
+    enqueue_appointment_rescheduled_notification,
+)
 from app.services.scheduling_service import SchedulingService
 from app.utils.datetime import ensure_aware_utc
 
@@ -121,6 +126,7 @@ class AppointmentService:
                 notes=payload.notes,
             )
             self.db.commit()
+            enqueue_appointment_created_notification(appointment.id)
             return appointment
         except IntegrityError as exc:
             self.db.rollback()
@@ -153,6 +159,7 @@ class AppointmentService:
                 notes=merged_notes,
             )
             self.db.commit()
+            enqueue_appointment_cancelled_notification(updated.id)
             return updated
         except Exception:
             self.db.rollback()
@@ -203,6 +210,7 @@ class AppointmentService:
                 status=appointment.status,
             )
             self.db.commit()
+            enqueue_appointment_rescheduled_notification(updated.id)
             return updated
         except IntegrityError as exc:
             self.db.rollback()

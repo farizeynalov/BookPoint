@@ -11,6 +11,13 @@ celery_app = Celery(
 celery_app.conf.update(
     task_default_queue="bookpoint-default",
     imports=("app.workers.tasks",),
+    beat_schedule={
+        "bookpoint-schedule-upcoming-reminders": {
+            "task": "bookpoint.notifications.schedule_upcoming_reminders",
+            "schedule": 300.0,
+            "kwargs": {"lookahead_minutes": 60},
+        }
+    },
     task_serializer="json",
     result_serializer="json",
     accept_content=["json"],

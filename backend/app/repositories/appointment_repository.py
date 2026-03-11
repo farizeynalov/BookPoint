@@ -92,6 +92,24 @@ class AppointmentRepository:
             stmt = stmt.where(Appointment.id != exclude_appointment_id)
         return list(self.db.scalars(stmt))
 
+    def list_starting_between(
+        self,
+        *,
+        start_datetime: datetime,
+        end_datetime: datetime,
+        statuses: tuple[AppointmentStatus, ...] = BLOCKING_STATUSES,
+    ) -> list[Appointment]:
+        stmt = (
+            select(Appointment)
+            .where(
+                Appointment.status.in_(statuses),
+                Appointment.start_datetime >= start_datetime,
+                Appointment.start_datetime <= end_datetime,
+            )
+            .order_by(Appointment.start_datetime.asc())
+        )
+        return list(self.db.scalars(stmt))
+
     def update(self, appointment: Appointment, *, auto_commit: bool = True, **kwargs) -> Appointment:
         for field, value in kwargs.items():
             setattr(appointment, field, value)
