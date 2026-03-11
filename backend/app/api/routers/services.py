@@ -3,8 +3,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.dependencies.auth import get_current_active_user, require_org_membership
+from app.dependencies.auth import (
+    get_current_active_user,
+    require_org_admin_membership,
+    require_org_membership,
+)
 from app.models.user import User
+from app.repositories.organization_member_repository import OrganizationMemberRepository
 from app.repositories.provider_repository import ProviderRepository
 from app.repositories.service_repository import ServiceRepository
 from app.schemas.service import ProviderServiceCreate, ServiceCreate, ServiceRead, ServiceUpdate
@@ -24,7 +29,7 @@ def create_provider_service(
     if provider is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider not found")
 
-    require_org_membership(db, organization_id=provider.organization_id, user=current_user)
+    require_org_admin_membership(db, organization_id=provider.organization_id, user=current_user)
     create_data = payload.model_dump()
     try:
         service = ServiceRepository(db).create(
@@ -68,16 +73,13 @@ def create_service(
     provider = provider_repo.get(payload.provider_id)
     if provider is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider not found")
-    if payload.organization_id is not None and provider.organization_id != payload.organization_id:
+    if provider.organization_id != payload.organization_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provider org mismatch")
 
-    require_org_membership(db, organization_id=provider.organization_id, user=current_user)
-    create_data = payload.model_dump(exclude={"organization_id"})
+    require_org_admin_membership(db, organization_id=payload.organization_id, user=current_user)
+    create_data = payload.model_dump()
     try:
-        service = service_repo.create(
-            organization_id=provider.organization_id,
-            **create_data,
-        )
+        service = service_repo.create(**create_data)
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service failed integrity checks")
@@ -92,13 +94,28 @@ def list_services(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> list[ServiceRead]:
+    service_repo = ServiceRepository(db)
     if organization_id is not None:
         require_org_membership(db, organization_id=organization_id, user=current_user)
-    services = ServiceRepository(db).list_services(
-        organization_id=organization_id,
-        provider_id=provider_id,
-        include_inactive=include_inactive,
-    )
+        services = service_repo.list_services(
+            organization_id=organization_id,
+            provider_id=provider_id,
+            include_inactive=include_inactive,
+        )
+    elif current_user.is_platform_admin:
+        services = service_repo.list_services(
+            provider_id=provider_id,
+            include_inactive=include_inactive,
+        )
+    else:
+        org_ids = OrganizationMemberRepository(db).list_active_org_ids_for_user(current_user.id)
+        if not org_ids:
+            return []
+        services = [
+            service
+            for service in service_repo.list_services(provider_id=provider_id, include_inactive=include_inactive)
+            if service.organization_id in org_ids
+        ]
     return [ServiceRead.model_validate(service) for service in services]
 
 
@@ -128,7 +145,7 @@ def update_service(
     if service is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
 
-    require_org_membership(db, organization_id=service.organization_id, user=current_user)
+    require_org_admin_membership(db, organization_id=service.organization_id, user=current_user)
     updates = payload.model_dump(exclude_unset=True)
     if "provider_id" in updates:
         provider_id = updates["provider_id"]
@@ -155,7 +172,7 @@ def activate_service(
     service = service_repo.get(service_id)
     if service is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
-    require_org_membership(db, organization_id=service.organization_id, user=current_user)
+    require_org_admin_membership(db, organization_id=service.organization_id, user=current_user)
     updated = service_repo.update(service, is_active=True)
     return ServiceRead.model_validate(updated)
 
@@ -170,7 +187,7 @@ def deactivate_service(
     service = service_repo.get(service_id)
     if service is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
-    require_org_membership(db, organization_id=service.organization_id, user=current_user)
+    require_org_admin_membership(db, organization_id=service.organization_id, user=current_user)
     updated = service_repo.update(service, is_active=False)
     return ServiceRead.model_validate(updated)
 
@@ -185,6 +202,6 @@ def delete_service(
     service = service_repo.get(service_id)
     if service is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
-    require_org_membership(db, organization_id=service.organization_id, user=current_user)
+    require_org_admin_membership(db, organization_id=service.organization_id, user=current_user)
     updated = service_repo.update(service, is_active=False)
     return ServiceRead.model_validate(updated)

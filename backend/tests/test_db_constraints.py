@@ -10,6 +10,7 @@ from app.models.service import Service
 def test_provider_duration_db_constraint(db_session: Session) -> None:
     organization = Organization(
         name="Constraint Org",
+        slug="constraint-org",
         business_type="clinic",
         city="Baku",
         timezone="Asia/Baku",
@@ -35,6 +36,7 @@ def test_provider_duration_db_constraint(db_session: Session) -> None:
 def test_service_price_and_duration_db_constraints(db_session: Session) -> None:
     organization = Organization(
         name="Constraint Service Org",
+        slug="constraint-service-org",
         business_type="salon",
         city="Baku",
         timezone="Asia/Baku",
@@ -72,6 +74,7 @@ def test_service_price_and_duration_db_constraints(db_session: Session) -> None:
 def test_service_buffer_db_constraints(db_session: Session) -> None:
     organization = Organization(
         name="Constraint Buffer Org",
+        slug="constraint-buffer-org",
         business_type="salon",
         city="Baku",
         timezone="Asia/Baku",

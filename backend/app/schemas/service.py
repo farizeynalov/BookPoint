@@ -18,7 +18,7 @@ class ServiceBase(ORMModel):
 
 class ServiceCreate(ServiceBase):
     provider_id: int
-    organization_id: int | None = None
+    organization_id: int
 
 
 class ProviderServiceCreate(ServiceBase):

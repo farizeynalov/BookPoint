@@ -3,7 +3,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.dependencies.auth import get_current_active_user, require_org_membership
+from app.dependencies.auth import (
+    get_current_active_user,
+    require_org_membership,
+    require_provider_schedule_access,
+)
 from app.models.user import User
 from app.repositories.provider_availability_repository import ProviderAvailabilityRepository
 from app.repositories.provider_repository import ProviderRepository
@@ -33,7 +37,7 @@ def create_availability(
     current_user: User = Depends(get_current_active_user),
 ) -> ProviderAvailabilityRead:
     provider = _load_provider_or_404(payload.provider_id, db)
-    require_org_membership(db, organization_id=provider.organization_id, user=current_user)
+    require_provider_schedule_access(db, provider=provider, user=current_user)
 
     try:
         availability = ProviderAvailabilityService(db).create_availability(payload)
@@ -70,7 +74,7 @@ def update_availability(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability block not found")
 
     provider = _load_provider_or_404(block.provider_id, db)
-    require_org_membership(db, organization_id=provider.organization_id, user=current_user)
+    require_provider_schedule_access(db, provider=provider, user=current_user)
     try:
         updated = ProviderAvailabilityService(db).update_availability(availability_id, payload)
     except ValueError as exc:
@@ -93,7 +97,7 @@ def delete_availability(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability block not found")
 
     provider = _load_provider_or_404(block.provider_id, db)
-    require_org_membership(db, organization_id=provider.organization_id, user=current_user)
+    require_provider_schedule_access(db, provider=provider, user=current_user)
     availability_repo.delete(block)
 
 
@@ -121,7 +125,7 @@ def create_provider_availability(
     current_user: User = Depends(get_current_active_user),
 ) -> ProviderAvailabilityRead:
     provider = _load_provider_or_404(provider_id, db)
-    require_org_membership(db, organization_id=provider.organization_id, user=current_user)
+    require_provider_schedule_access(db, provider=provider, user=current_user)
     create_payload = ProviderAvailabilityCreate(provider_id=provider_id, **payload.model_dump())
     try:
         availability = ProviderAvailabilityService(db).create_availability(create_payload)
@@ -142,7 +146,7 @@ def update_provider_availability(
     current_user: User = Depends(get_current_active_user),
 ) -> ProviderAvailabilityRead:
     provider = _load_provider_or_404(provider_id, db)
-    require_org_membership(db, organization_id=provider.organization_id, user=current_user)
+    require_provider_schedule_access(db, provider=provider, user=current_user)
     availability_repo = ProviderAvailabilityRepository(db)
     block = availability_repo.get(availability_id)
     if block is None or block.provider_id != provider_id:
@@ -165,7 +169,7 @@ def delete_provider_availability(
     current_user: User = Depends(get_current_active_user),
 ) -> None:
     provider = _load_provider_or_404(provider_id, db)
-    require_org_membership(db, organization_id=provider.organization_id, user=current_user)
+    require_provider_schedule_access(db, provider=provider, user=current_user)
     availability_repo = ProviderAvailabilityRepository(db)
     block = availability_repo.get(availability_id)
     if block is None or block.provider_id != provider_id:

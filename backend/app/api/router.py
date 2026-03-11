@@ -19,6 +19,11 @@ from app.api.routers import (
 api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(organizations.router, prefix="/organizations", tags=["organizations"])
+api_router.include_router(
+    organization_members.nested_router,
+    prefix="/organizations",
+    tags=["organization-memberships"],
+)
 api_router.include_router(organization_members.router, prefix="/organization-members", tags=["organization-members"])
 api_router.include_router(providers.router, prefix="/providers", tags=["providers"])
 api_router.include_router(services.provider_services_router, prefix="/providers", tags=["services"])

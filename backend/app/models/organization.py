@@ -10,7 +10,8 @@ class Organization(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    business_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    slug: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    business_type: Mapped[str] = mapped_column(String(100), nullable=False, default="business")
     city: Mapped[str] = mapped_column(String(100), nullable=False, default=settings.default_city)
     address: Mapped[str | None] = mapped_column(String(255), nullable=True)
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default=settings.default_timezone)

@@ -15,6 +15,8 @@ from app.repositories.user_repository import UserRepository
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.api_v1_prefix}/auth/login")
 
+ORG_ADMIN_ROLES = (MembershipRole.OWNER, MembershipRole.ADMIN)
+
 
 def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)) -> User:
     credentials_exception = HTTPException(
@@ -72,3 +74,21 @@ def require_org_membership(
     if allowed_roles and membership.role not in set(allowed_roles):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient organization role")
     return membership
+
+
+def require_org_admin_membership(db: Session, *, organization_id: int, user: User) -> OrganizationMember:
+    return require_org_membership(
+        db,
+        organization_id=organization_id,
+        user=user,
+        allowed_roles=ORG_ADMIN_ROLES,
+    )
+
+
+def require_provider_schedule_access(db: Session, *, provider, user: User) -> OrganizationMember:
+    membership = require_org_membership(db, organization_id=provider.organization_id, user=user)
+    if membership.role in ORG_ADMIN_ROLES:
+        return membership
+    if membership.role == MembershipRole.PROVIDER and provider.user_id == user.id:
+        return membership
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient organization role")

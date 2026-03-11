@@ -4,7 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.dependencies.auth import get_current_active_user, require_org_membership
+from app.dependencies.auth import (
+    get_current_active_user,
+    require_org_membership,
+    require_provider_schedule_access,
+)
 from app.models.user import User
 from app.repositories.provider_repository import ProviderRepository
 from app.repositories.provider_time_off_repository import ProviderTimeOffRepository
@@ -34,7 +38,7 @@ def create_time_off(
     current_user: User = Depends(get_current_active_user),
 ) -> ProviderTimeOffRead:
     provider = _load_provider_or_404(payload.provider_id, db)
-    require_org_membership(db, organization_id=provider.organization_id, user=current_user)
+    require_provider_schedule_access(db, provider=provider, user=current_user)
     try:
         time_off = ProviderTimeOffService(db).create_time_off(payload)
     except ValueError as exc:
@@ -72,7 +76,7 @@ def update_time_off(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Time-off interval not found")
 
     provider = _load_provider_or_404(interval.provider_id, db)
-    require_org_membership(db, organization_id=provider.organization_id, user=current_user)
+    require_provider_schedule_access(db, provider=provider, user=current_user)
     try:
         updated = ProviderTimeOffService(db).update_time_off(time_off_id, payload)
     except ValueError as exc:
@@ -92,7 +96,7 @@ def delete_time_off(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Time-off interval not found")
 
     provider = _load_provider_or_404(interval.provider_id, db)
-    require_org_membership(db, organization_id=provider.organization_id, user=current_user)
+    require_provider_schedule_access(db, provider=provider, user=current_user)
     repo.delete(interval)
 
 
@@ -122,7 +126,7 @@ def create_provider_time_off(
     current_user: User = Depends(get_current_active_user),
 ) -> ProviderTimeOffRead:
     provider = _load_provider_or_404(provider_id, db)
-    require_org_membership(db, organization_id=provider.organization_id, user=current_user)
+    require_provider_schedule_access(db, provider=provider, user=current_user)
     create_payload = ProviderTimeOffCreate(provider_id=provider_id, **payload.model_dump())
     try:
         row = ProviderTimeOffService(db).create_time_off(create_payload)
@@ -140,7 +144,7 @@ def update_provider_time_off(
     current_user: User = Depends(get_current_active_user),
 ) -> ProviderTimeOffRead:
     provider = _load_provider_or_404(provider_id, db)
-    require_org_membership(db, organization_id=provider.organization_id, user=current_user)
+    require_provider_schedule_access(db, provider=provider, user=current_user)
     row = ProviderTimeOffRepository(db).get(time_off_id)
     if row is None or row.provider_id != provider_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Time-off interval not found")
@@ -159,7 +163,7 @@ def delete_provider_time_off(
     current_user: User = Depends(get_current_active_user),
 ) -> None:
     provider = _load_provider_or_404(provider_id, db)
-    require_org_membership(db, organization_id=provider.organization_id, user=current_user)
+    require_provider_schedule_access(db, provider=provider, user=current_user)
     repo = ProviderTimeOffRepository(db)
     row = repo.get(time_off_id)
     if row is None or row.provider_id != provider_id:

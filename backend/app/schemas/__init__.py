@@ -4,7 +4,14 @@ from app.schemas.auth import LoginRequest, TokenResponse, UserRead
 from app.schemas.customer import CustomerCreate, CustomerRead, CustomerUpdate
 from app.schemas.customer_channel_identity import CustomerChannelIdentityCreate, CustomerChannelIdentityRead
 from app.schemas.organization import OrganizationCreate, OrganizationRead, OrganizationUpdate
-from app.schemas.organization_member import OrganizationMemberCreate, OrganizationMemberRead, OrganizationMemberUpdate
+from app.schemas.organization_member import (
+    OrganizationMemberCreate,
+    OrganizationMemberRead,
+    OrganizationMemberUpdate,
+    OrganizationMembershipCreate,
+    OrganizationMembershipRead,
+    OrganizationMembershipUpdate,
+)
 from app.schemas.provider import ProviderCreate, ProviderRead, ProviderUpdate
 from app.schemas.provider_availability import (
     ProviderAvailabilityCreate,
@@ -39,6 +46,9 @@ __all__ = [
     "OrganizationMemberCreate",
     "OrganizationMemberRead",
     "OrganizationMemberUpdate",
+    "OrganizationMembershipCreate",
+    "OrganizationMembershipRead",
+    "OrganizationMembershipUpdate",
     "OrganizationRead",
     "OrganizationUpdate",
     "ProviderAvailabilityCreate",

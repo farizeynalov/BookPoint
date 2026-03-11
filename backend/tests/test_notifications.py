@@ -98,6 +98,7 @@ def _create_upcoming_appointment(
     phone = f"+1999{token % 10_000_000:07d}"
     organization = Organization(
         name=f"Notif Org {token}",
+        slug=f"notif-org-{token}",
         business_type="clinic",
         city="Baku",
         address="Main",

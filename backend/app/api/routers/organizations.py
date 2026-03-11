@@ -3,7 +3,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.dependencies.auth import get_current_active_user, require_org_membership
+from app.dependencies.auth import (
+    get_current_active_user,
+    require_org_admin_membership,
+    require_org_membership,
+)
 from app.models.enums import MembershipRole
 from app.models.organization import Organization
 from app.models.user import User
@@ -74,11 +78,21 @@ def update_organization(
     if organization is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
 
-    require_org_membership(
-        db,
-        organization_id=organization_id,
-        user=current_user,
-        allowed_roles=[MembershipRole.OWNER, MembershipRole.MANAGER],
-    )
+    require_org_admin_membership(db, organization_id=organization_id, user=current_user)
     updated = org_repo.update(organization, **payload.model_dump(exclude_unset=True))
     return OrganizationRead.model_validate(updated)
+
+
+@router.delete("/{organization_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_organization(
+    organization_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> None:
+    org_repo = OrganizationRepository(db)
+    organization = org_repo.get(organization_id)
+    if organization is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+
+    require_org_admin_membership(db, organization_id=organization_id, user=current_user)
+    org_repo.delete(organization)

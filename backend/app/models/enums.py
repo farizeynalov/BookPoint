@@ -3,9 +3,9 @@ from enum import Enum
 
 class MembershipRole(str, Enum):
     OWNER = "owner"
-    MANAGER = "manager"
+    ADMIN = "admin"
+    PROVIDER = "provider"
     STAFF = "staff"
-    ASSISTANT = "assistant"
 
 
 class ChannelType(str, Enum):
