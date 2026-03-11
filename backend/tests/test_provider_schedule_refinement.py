@@ -141,7 +141,7 @@ def _create_date_override(
     is_available: bool,
     start_time: str | None = None,
     end_time: str | None = None,
-) -> None:
+) -> dict:
     response = client.post(
         f"/api/v1/providers/{provider_id}/date-overrides",
         headers=auth_headers,
@@ -154,6 +154,7 @@ def _create_date_override(
         },
     )
     assert response.status_code == 201
+    return response.json()
 
 
 def _create_time_off(
@@ -164,7 +165,7 @@ def _create_time_off(
     start_datetime: str,
     end_datetime: str,
     reason: str = "time off",
-) -> None:
+) -> dict:
     response = client.post(
         f"/api/v1/providers/{provider_id}/time-off",
         headers=auth_headers,
@@ -175,6 +176,7 @@ def _create_time_off(
         },
     )
     assert response.status_code == 201
+    return response.json()
 
 
 def _get_slots(
@@ -287,12 +289,112 @@ def test_time_off_removes_overlapping_slots(client: TestClient, auth_headers: di
     assert _local_time_points(slots) == [(9, 0), (9, 30), (11, 0), (11, 30)]
 
 
+def test_create_and_list_provider_time_off(client: TestClient, auth_headers: dict[str, str]) -> None:
+    data = _create_provider_setup(client, auth_headers)
+    monday = _next_weekday(0)
+    created = _create_time_off(
+        client,
+        auth_headers,
+        provider_id=data["provider_id"],
+        start_datetime=_local_to_utc_iso(monday, time.fromisoformat("10:00:00")),
+        end_datetime=_local_to_utc_iso(monday, time.fromisoformat("11:00:00")),
+    )
+    response = client.get(
+        f"/api/v1/providers/{data['provider_id']}/time-off",
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["id"] == created["id"]
+    assert payload[0]["provider_id"] == data["provider_id"]
+
+
+def test_invalid_time_off_rejected_when_start_not_before_end(client: TestClient, auth_headers: dict[str, str]) -> None:
+    data = _create_provider_setup(client, auth_headers)
+    monday = _next_weekday(0)
+    same_point = _local_to_utc_iso(monday, time.fromisoformat("10:00:00"))
+    response = client.post(
+        f"/api/v1/providers/{data['provider_id']}/time-off",
+        headers=auth_headers,
+        json={
+            "start_datetime": same_point,
+            "end_datetime": same_point,
+            "reason": "invalid interval",
+        },
+    )
+    assert response.status_code == 400
+    assert "start_datetime must be before end_datetime" in response.json()["detail"]
+
+
+def test_create_and_list_provider_date_override(client: TestClient, auth_headers: dict[str, str]) -> None:
+    data = _create_provider_setup(client, auth_headers)
+    monday = _next_weekday(0)
+    created = _create_date_override(
+        client,
+        auth_headers,
+        provider_id=data["provider_id"],
+        override_date=monday,
+        is_available=True,
+        start_time="12:00:00",
+        end_time="15:00:00",
+    )
+    response = client.get(
+        f"/api/v1/providers/{data['provider_id']}/date-overrides",
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["id"] == created["id"]
+    assert payload[0]["provider_id"] == data["provider_id"]
+
+
 def test_buffer_aware_scheduling_still_works(client: TestClient, auth_headers: dict[str, str]) -> None:
     data = _create_provider_setup(client, auth_headers, buffer_before_minutes=15, buffer_after_minutes=15)
     monday = _next_weekday(0)
     _add_weekly_availability(client, auth_headers, provider_id=data["provider_id"], weekday=0, start_time="09:00:00", end_time="11:00:00")
     slots = _get_slots(client, auth_headers, provider_id=data["provider_id"], query_date=monday, service_id=data["service_id"])
     assert _local_time_points(slots) == [(9, 15), (9, 45), (10, 15)]
+
+
+def test_full_window_time_off_returns_no_slots(client: TestClient, auth_headers: dict[str, str]) -> None:
+    data = _create_provider_setup(client, auth_headers)
+    monday = _next_weekday(0)
+    _add_weekly_availability(client, auth_headers, provider_id=data["provider_id"], weekday=0, start_time="09:00:00", end_time="12:00:00")
+    _create_time_off(
+        client,
+        auth_headers,
+        provider_id=data["provider_id"],
+        start_datetime=_local_to_utc_iso(monday, time.fromisoformat("09:00:00")),
+        end_datetime=_local_to_utc_iso(monday, time.fromisoformat("12:00:00")),
+    )
+    slots = _get_slots(client, auth_headers, provider_id=data["provider_id"], query_date=monday, service_id=data["service_id"])
+    assert slots == []
+
+
+def test_time_off_subtracts_from_override_hours(client: TestClient, auth_headers: dict[str, str]) -> None:
+    data = _create_provider_setup(client, auth_headers)
+    monday = _next_weekday(0)
+    _add_weekly_availability(client, auth_headers, provider_id=data["provider_id"], weekday=0, start_time="09:00:00", end_time="18:00:00")
+    _create_date_override(
+        client,
+        auth_headers,
+        provider_id=data["provider_id"],
+        override_date=monday,
+        is_available=True,
+        start_time="12:00:00",
+        end_time="15:00:00",
+    )
+    _create_time_off(
+        client,
+        auth_headers,
+        provider_id=data["provider_id"],
+        start_datetime=_local_to_utc_iso(monday, time.fromisoformat("13:00:00")),
+        end_datetime=_local_to_utc_iso(monday, time.fromisoformat("14:00:00")),
+    )
+    slots = _get_slots(client, auth_headers, provider_id=data["provider_id"], query_date=monday, service_id=data["service_id"])
+    assert _local_time_points(slots) == [(12, 0), (12, 30), (14, 0), (14, 30)]
 
 
 def test_appointment_creation_respects_refined_schedule(client: TestClient, auth_headers: dict[str, str]) -> None:
