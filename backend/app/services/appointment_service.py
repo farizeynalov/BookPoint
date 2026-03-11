@@ -87,8 +87,6 @@ class AppointmentService:
                     raise ValueError("Service not found or inactive.")
                 if service.organization_id != organization_id:
                     raise ValueError("Service and provider organization mismatch.")
-                if service.provider_id != provider.id:
-                    raise ValueError("Service does not belong to the selected provider.")
 
             timing = self._resolve_service_timing(provider.id, payload.service_id)
             end_datetime = start_datetime + timedelta(minutes=timing.visible_duration_minutes)

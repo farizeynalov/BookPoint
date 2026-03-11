@@ -10,6 +10,7 @@ from app.models.organization_membership import OrganizationMembership
 from app.models.provider import Provider
 from app.models.provider_availability import ProviderAvailability
 from app.models.provider_date_override import ProviderDateOverride
+from app.models.provider_service import ProviderService
 from app.models.provider_time_off import ProviderTimeOff
 from app.models.service import Service
 from app.models.user import User
@@ -27,6 +28,7 @@ __all__ = [
     "Provider",
     "ProviderAvailability",
     "ProviderDateOverride",
+    "ProviderService",
     "ProviderTimeOff",
     "Service",
     "User",

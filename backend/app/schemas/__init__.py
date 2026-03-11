@@ -25,6 +25,12 @@ from app.schemas.provider_date_override import (
     ProviderDateOverrideUpdate,
     ProviderDateOverrideWindowCreate,
 )
+from app.schemas.provider_service import (
+    ProviderAssignedServiceRead,
+    ProviderServiceAssignCreate,
+    ProviderServiceAssignUpdate,
+    ProviderServiceRead,
+)
 from app.schemas.provider_time_off import ProviderTimeOffCreate, ProviderTimeOffRead, ProviderTimeOffUpdate
 from app.schemas.provider_time_off import ProviderTimeOffWindowCreate
 from app.schemas.scheduling import SlotQuery, SlotRead
@@ -60,7 +66,11 @@ __all__ = [
     "ProviderDateOverrideRead",
     "ProviderDateOverrideUpdate",
     "ProviderDateOverrideWindowCreate",
+    "ProviderAssignedServiceRead",
     "ProviderRead",
+    "ProviderServiceAssignCreate",
+    "ProviderServiceAssignUpdate",
+    "ProviderServiceRead",
     "ProviderTimeOffCreate",
     "ProviderTimeOffRead",
     "ProviderTimeOffUpdate",

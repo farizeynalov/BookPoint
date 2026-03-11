@@ -8,6 +8,7 @@ from app.repositories.appointment_repository import AppointmentRepository
 from app.repositories.provider_availability_repository import ProviderAvailabilityRepository
 from app.repositories.provider_date_override_repository import ProviderDateOverrideRepository
 from app.repositories.provider_repository import ProviderRepository
+from app.repositories.provider_service_repository import ProviderServiceRepository
 from app.repositories.provider_time_off_repository import ProviderTimeOffRepository
 from app.repositories.service_repository import ServiceRepository
 from app.utils.datetime import daterange
@@ -47,6 +48,7 @@ class SchedulingService:
         self.db = db
         self.provider_repo = ProviderRepository(db)
         self.service_repo = ServiceRepository(db)
+        self.provider_service_repo = ProviderServiceRepository(db)
         self.availability_repo = ProviderAvailabilityRepository(db)
         self.date_override_repo = ProviderDateOverrideRepository(db)
         self.time_off_repo = ProviderTimeOffRepository(db)
@@ -76,10 +78,15 @@ class SchedulingService:
             raise ValueError("Service not found or inactive.")
         if service.organization_id != provider.organization_id:
             raise ValueError("Service and provider organization mismatch.")
-        if service.provider_id != provider.id:
-            raise ValueError("Service is restricted to another provider.")
+        provider_service = self.provider_service_repo.get_by_provider_and_service(
+            provider_id=provider.id,
+            service_id=service.id,
+        )
+        if provider_service is None:
+            raise ValueError("Provider is not assigned to the selected service.")
+        duration_minutes = provider_service.duration_minutes_override or service.duration_minutes
         return ServiceTiming(
-            visible_duration_minutes=service.duration_minutes,
+            visible_duration_minutes=duration_minutes,
             buffer_before_minutes=service.buffer_before_minutes,
             buffer_after_minutes=service.buffer_after_minutes,
         )

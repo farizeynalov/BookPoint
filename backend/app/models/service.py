@@ -29,4 +29,5 @@ class Service(Base, TimestampMixin):
 
     organization = relationship("Organization", back_populates="services")
     provider = relationship("Provider", back_populates="services")
+    provider_services = relationship("ProviderService", back_populates="service", cascade="all, delete-orphan")
     appointments = relationship("Appointment", back_populates="service")

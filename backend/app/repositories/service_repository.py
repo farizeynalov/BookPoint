@@ -1,6 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.provider_service import ProviderService
 from app.models.service import Service
 
 
@@ -35,7 +36,11 @@ class ServiceRepository:
         if organization_id is not None:
             stmt = stmt.where(Service.organization_id == organization_id)
         if provider_id is not None:
-            stmt = stmt.where(Service.provider_id == provider_id)
+            stmt = (
+                stmt.join(ProviderService, ProviderService.service_id == Service.id)
+                .where(ProviderService.provider_id == provider_id)
+                .distinct()
+            )
         if not include_inactive:
             stmt = stmt.where(Service.is_active.is_(True))
         return list(self.db.scalars(stmt))

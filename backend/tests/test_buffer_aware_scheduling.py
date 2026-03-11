@@ -317,35 +317,12 @@ def test_appointment_end_datetime_remains_visible_duration_only(client: TestClie
     assert int((end - start).total_seconds() // 60) == 30
 
 
-def test_service_id_none_fallback_uses_zero_buffers(client: TestClient, auth_headers: dict[str, str]) -> None:
+def test_slot_generation_requires_service_id(client: TestClient, auth_headers: dict[str, str]) -> None:
     data = _create_provider_setup(client, auth_headers, availability_start="09:00:00", availability_end="11:00:00")
     monday = _next_weekday(0)
-    slots = _get_slots(client, auth_headers, data["provider_id"], monday, service_id=None)
-    assert len(slots) == 4
-
-    first_response = client.post(
-        "/api/v1/appointments",
+    response = client.get(
+        f"/api/v1/scheduling/providers/{data['provider_id']}/slots",
         headers=auth_headers,
-        json={
-            "provider_id": data["provider_id"],
-            "customer_id": data["customer_one_id"],
-            "start_datetime": slots[0]["start_datetime"],
-            "status": "confirmed",
-            "booking_channel": "web",
-            "notes": None,
-        },
+        params={"start_date": monday.isoformat(), "end_date": monday.isoformat()},
     )
-    assert first_response.status_code == 201
-    second_response = client.post(
-        "/api/v1/appointments",
-        headers=auth_headers,
-        json={
-            "provider_id": data["provider_id"],
-            "customer_id": data["customer_two_id"],
-            "start_datetime": slots[1]["start_datetime"],
-            "status": "confirmed",
-            "booking_channel": "web",
-            "notes": None,
-        },
-    )
-    assert second_response.status_code == 201
+    assert response.status_code == 422

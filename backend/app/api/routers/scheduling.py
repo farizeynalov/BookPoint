@@ -18,7 +18,7 @@ def get_available_slots(
     provider_id: int,
     start_date: date = Query(...),
     end_date: date = Query(...),
-    service_id: int | None = Query(default=None),
+    service_id: int = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> list[SlotRead]:

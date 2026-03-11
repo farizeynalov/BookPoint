@@ -7,6 +7,7 @@ from app.repositories.organization_repository import OrganizationRepository
 from app.repositories.provider_availability_repository import ProviderAvailabilityRepository
 from app.repositories.provider_date_override_repository import ProviderDateOverrideRepository
 from app.repositories.provider_repository import ProviderRepository
+from app.repositories.provider_service_repository import ProviderServiceRepository
 from app.repositories.provider_time_off_repository import ProviderTimeOffRepository
 from app.repositories.service_repository import ServiceRepository
 from app.repositories.user_repository import UserRepository
@@ -21,6 +22,7 @@ __all__ = [
     "ProviderAvailabilityRepository",
     "ProviderDateOverrideRepository",
     "ProviderRepository",
+    "ProviderServiceRepository",
     "ProviderTimeOffRepository",
     "ServiceRepository",
     "UserRepository",
