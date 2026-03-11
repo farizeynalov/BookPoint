@@ -10,10 +10,18 @@ from app.schemas.provider_availability import (
     ProviderAvailabilityCreate,
     ProviderAvailabilityRead,
     ProviderAvailabilityUpdate,
+    ProviderAvailabilityWindowCreate,
+)
+from app.schemas.provider_date_override import (
+    ProviderDateOverrideCreate,
+    ProviderDateOverrideRead,
+    ProviderDateOverrideUpdate,
+    ProviderDateOverrideWindowCreate,
 )
 from app.schemas.provider_time_off import ProviderTimeOffCreate, ProviderTimeOffRead, ProviderTimeOffUpdate
+from app.schemas.provider_time_off import ProviderTimeOffWindowCreate
 from app.schemas.scheduling import SlotQuery, SlotRead
-from app.schemas.service import ServiceCreate, ServiceRead, ServiceUpdate
+from app.schemas.service import ProviderServiceCreate, ServiceCreate, ServiceRead, ServiceUpdate
 
 __all__ = [
     "AdminPing",
@@ -36,12 +44,19 @@ __all__ = [
     "ProviderAvailabilityCreate",
     "ProviderAvailabilityRead",
     "ProviderAvailabilityUpdate",
+    "ProviderAvailabilityWindowCreate",
     "ProviderCreate",
+    "ProviderDateOverrideCreate",
+    "ProviderDateOverrideRead",
+    "ProviderDateOverrideUpdate",
+    "ProviderDateOverrideWindowCreate",
     "ProviderRead",
     "ProviderTimeOffCreate",
     "ProviderTimeOffRead",
     "ProviderTimeOffUpdate",
+    "ProviderTimeOffWindowCreate",
     "ProviderUpdate",
+    "ProviderServiceCreate",
     "ServiceCreate",
     "ServiceRead",
     "ServiceUpdate",

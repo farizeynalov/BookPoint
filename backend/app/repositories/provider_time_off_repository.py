@@ -10,11 +10,13 @@ class ProviderTimeOffRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def create(self, **kwargs) -> ProviderTimeOff:
+    def create(self, *, auto_commit: bool = True, **kwargs) -> ProviderTimeOff:
         time_off = ProviderTimeOff(**kwargs)
         self.db.add(time_off)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(time_off)
+        if auto_commit:
+            self.db.commit()
         return time_off
 
     def get(self, time_off_id: int) -> ProviderTimeOff | None:
@@ -33,12 +35,14 @@ class ProviderTimeOffRepository:
             stmt = stmt.where(ProviderTimeOff.start_datetime < end_datetime)
         return list(self.db.scalars(stmt))
 
-    def update(self, time_off: ProviderTimeOff, **kwargs) -> ProviderTimeOff:
+    def update(self, time_off: ProviderTimeOff, *, auto_commit: bool = True, **kwargs) -> ProviderTimeOff:
         for field, value in kwargs.items():
             setattr(time_off, field, value)
         self.db.add(time_off)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(time_off)
+        if auto_commit:
+            self.db.commit()
         return time_off
 
     def delete(self, time_off: ProviderTimeOff) -> None:

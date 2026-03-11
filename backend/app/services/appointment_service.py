@@ -32,21 +32,12 @@ class AppointmentService:
         self.appointment_repo = AppointmentRepository(db)
         self.scheduling_service = SchedulingService(db)
 
-    def _resolve_duration_minutes(self, provider_id: int, service_id: int | None) -> int:
-        provider = self.provider_repo.get(provider_id)
-        if provider is None:
-            raise ValueError("Provider not found.")
-        if service_id is None:
-            return provider.appointment_duration_minutes
-
-        service = self.service_repo.get(service_id)
-        if service is None or not service.is_active:
-            raise ValueError("Service not found or inactive.")
-        if service.organization_id != provider.organization_id:
-            raise ValueError("Service and provider organization mismatch.")
-        if service.provider_id is not None and service.provider_id != provider.id:
-            raise ValueError("Service is restricted to another provider.")
-        return service.duration_minutes
+    def _resolve_service_timing(self, provider_id: int, service_id: int | None):
+        return self.scheduling_service.resolve_service_timing(
+            provider_id=provider_id,
+            service_id=service_id,
+            require_active_service=True,
+        )
 
     def _assert_slot_is_available(self, *, provider_id: int, start_datetime, end_datetime, service_id: int | None) -> None:
         provider = self.provider_repo.get(provider_id)
@@ -91,16 +82,22 @@ class AppointmentService:
                     raise ValueError("Service not found or inactive.")
                 if service.organization_id != organization_id:
                     raise ValueError("Service and provider organization mismatch.")
-                if service.provider_id is not None and service.provider_id != provider.id:
+                if service.provider_id != provider.id:
                     raise ValueError("Service does not belong to the selected provider.")
 
-            duration_minutes = self._resolve_duration_minutes(provider.id, payload.service_id)
-            end_datetime = start_datetime + timedelta(minutes=duration_minutes)
+            timing = self._resolve_service_timing(provider.id, payload.service_id)
+            end_datetime = start_datetime + timedelta(minutes=timing.visible_duration_minutes)
+            blocked_start, blocked_end = self.scheduling_service.compute_blocked_interval(
+                visible_start=start_datetime,
+                visible_end=end_datetime,
+                buffer_before_minutes=timing.buffer_before_minutes,
+                buffer_after_minutes=timing.buffer_after_minutes,
+            )
 
-            if self.appointment_repo.has_overlap(
+            if self.scheduling_service.has_blocked_overlap(
                 provider_id=provider.id,
-                start_datetime=start_datetime,
-                end_datetime=end_datetime,
+                blocked_start=blocked_start,
+                blocked_end=blocked_end,
             ):
                 raise ValueError("Provider already has an overlapping appointment.")
 
@@ -174,13 +171,19 @@ class AppointmentService:
             if provider is None or not provider.is_active:
                 raise ValueError("Provider not found or inactive.")
 
-            duration_minutes = self._resolve_duration_minutes(appointment.provider_id, appointment.service_id)
-            end_datetime = start_datetime + timedelta(minutes=duration_minutes)
+            timing = self._resolve_service_timing(appointment.provider_id, appointment.service_id)
+            end_datetime = start_datetime + timedelta(minutes=timing.visible_duration_minutes)
+            blocked_start, blocked_end = self.scheduling_service.compute_blocked_interval(
+                visible_start=start_datetime,
+                visible_end=end_datetime,
+                buffer_before_minutes=timing.buffer_before_minutes,
+                buffer_after_minutes=timing.buffer_after_minutes,
+            )
 
-            if self.appointment_repo.has_overlap(
+            if self.scheduling_service.has_blocked_overlap(
                 provider_id=appointment.provider_id,
-                start_datetime=start_datetime,
-                end_datetime=end_datetime,
+                blocked_start=blocked_start,
+                blocked_end=blocked_end,
                 exclude_appointment_id=appointment.id,
             ):
                 raise ValueError("Provider already has an overlapping appointment.")

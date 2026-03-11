@@ -4,13 +4,16 @@ from app.schemas.common import ORMModel, TimestampRead
 
 
 class ProviderTimeOffBase(ORMModel):
-    provider_id: int
     start_datetime: datetime
     end_datetime: datetime
     reason: str | None = None
 
 
 class ProviderTimeOffCreate(ProviderTimeOffBase):
+    provider_id: int
+
+
+class ProviderTimeOffWindowCreate(ProviderTimeOffBase):
     pass
 
 
@@ -20,5 +23,5 @@ class ProviderTimeOffUpdate(ORMModel):
     reason: str | None = None
 
 
-class ProviderTimeOffRead(ProviderTimeOffBase, TimestampRead):
+class ProviderTimeOffRead(ProviderTimeOffCreate, TimestampRead):
     id: int

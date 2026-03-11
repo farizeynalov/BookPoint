@@ -27,6 +27,7 @@ class Provider(Base, TimestampMixin):
     organization = relationship("Organization", back_populates="providers")
     user = relationship("User", back_populates="provider_profile")
     availabilities = relationship("ProviderAvailability", back_populates="provider", cascade="all, delete-orphan")
+    date_overrides = relationship("ProviderDateOverride", back_populates="provider", cascade="all, delete-orphan")
     time_off_intervals = relationship("ProviderTimeOff", back_populates="provider", cascade="all, delete-orphan")
     services = relationship("Service", back_populates="provider")
     appointments = relationship("Appointment", back_populates="provider")

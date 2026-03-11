@@ -11,10 +11,12 @@ from app.schemas.provider_availability import (
     ProviderAvailabilityCreate,
     ProviderAvailabilityRead,
     ProviderAvailabilityUpdate,
+    ProviderAvailabilityWindowCreate,
 )
 from app.services.provider_availability_service import ProviderAvailabilityService
 
 router = APIRouter()
+provider_scoped_router = APIRouter()
 
 
 def _load_provider_or_404(provider_id: int, db: Session):
@@ -92,4 +94,80 @@ def delete_availability(
 
     provider = _load_provider_or_404(block.provider_id, db)
     require_org_membership(db, organization_id=provider.organization_id, user=current_user)
+    availability_repo.delete(block)
+
+
+@provider_scoped_router.get("/{provider_id}/availability", response_model=list[ProviderAvailabilityRead])
+def list_provider_availability(
+    provider_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> list[ProviderAvailabilityRead]:
+    provider = _load_provider_or_404(provider_id, db)
+    require_org_membership(db, organization_id=provider.organization_id, user=current_user)
+    blocks = ProviderAvailabilityRepository(db).list_by_provider(provider_id)
+    return [ProviderAvailabilityRead.model_validate(block) for block in blocks]
+
+
+@provider_scoped_router.post(
+    "/{provider_id}/availability",
+    response_model=ProviderAvailabilityRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_provider_availability(
+    provider_id: int,
+    payload: ProviderAvailabilityWindowCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> ProviderAvailabilityRead:
+    provider = _load_provider_or_404(provider_id, db)
+    require_org_membership(db, organization_id=provider.organization_id, user=current_user)
+    create_payload = ProviderAvailabilityCreate(provider_id=provider_id, **payload.model_dump())
+    try:
+        availability = ProviderAvailabilityService(db).create_availability(create_payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Availability block already exists")
+    return ProviderAvailabilityRead.model_validate(availability)
+
+
+@provider_scoped_router.patch("/{provider_id}/availability/{availability_id}", response_model=ProviderAvailabilityRead)
+def update_provider_availability(
+    provider_id: int,
+    availability_id: int,
+    payload: ProviderAvailabilityUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> ProviderAvailabilityRead:
+    provider = _load_provider_or_404(provider_id, db)
+    require_org_membership(db, organization_id=provider.organization_id, user=current_user)
+    availability_repo = ProviderAvailabilityRepository(db)
+    block = availability_repo.get(availability_id)
+    if block is None or block.provider_id != provider_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability block not found")
+    try:
+        updated = ProviderAvailabilityService(db).update_availability(availability_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Availability block already exists")
+    return ProviderAvailabilityRead.model_validate(updated)
+
+
+@provider_scoped_router.delete("/{provider_id}/availability/{availability_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_provider_availability(
+    provider_id: int,
+    availability_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> None:
+    provider = _load_provider_or_404(provider_id, db)
+    require_org_membership(db, organization_id=provider.organization_id, user=current_user)
+    availability_repo = ProviderAvailabilityRepository(db)
+    block = availability_repo.get(availability_id)
+    if block is None or block.provider_id != provider_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability block not found")
     availability_repo.delete(block)

@@ -4,7 +4,6 @@ from app.schemas.common import ORMModel, TimestampRead
 
 
 class ProviderAvailabilityBase(ORMModel):
-    provider_id: int
     weekday: int
     start_time: time
     end_time: time
@@ -12,6 +11,10 @@ class ProviderAvailabilityBase(ORMModel):
 
 
 class ProviderAvailabilityCreate(ProviderAvailabilityBase):
+    provider_id: int
+
+
+class ProviderAvailabilityWindowCreate(ProviderAvailabilityBase):
     pass
 
 
@@ -22,5 +25,5 @@ class ProviderAvailabilityUpdate(ORMModel):
     is_active: bool | None = None
 
 
-class ProviderAvailabilityRead(ProviderAvailabilityBase, TimestampRead):
+class ProviderAvailabilityRead(ProviderAvailabilityCreate, TimestampRead):
     id: int

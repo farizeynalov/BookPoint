@@ -18,12 +18,26 @@ class ServiceRepository:
     def get(self, service_id: int) -> Service | None:
         return self.db.get(Service, service_id)
 
-    def list_services(self, organization_id: int | None = None, provider_id: int | None = None) -> list[Service]:
+    def get_by_ids(self, service_ids: list[int]) -> list[Service]:
+        if not service_ids:
+            return []
+        stmt = select(Service).where(Service.id.in_(service_ids))
+        return list(self.db.scalars(stmt))
+
+    def list_services(
+        self,
+        organization_id: int | None = None,
+        provider_id: int | None = None,
+        *,
+        include_inactive: bool = True,
+    ) -> list[Service]:
         stmt = select(Service).order_by(Service.id.asc())
         if organization_id is not None:
             stmt = stmt.where(Service.organization_id == organization_id)
         if provider_id is not None:
             stmt = stmt.where(Service.provider_id == provider_id)
+        if not include_inactive:
+            stmt = stmt.where(Service.is_active.is_(True))
         return list(self.db.scalars(stmt))
 
     def update(self, service: Service, **kwargs) -> Service:

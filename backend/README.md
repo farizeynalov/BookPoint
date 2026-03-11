@@ -28,8 +28,11 @@ Implemented now:
 - Alembic migration setup + initial migration
 - JWT login foundation for dashboard users
 - Organization/member/provider/service/customer domain
+- Provider-owned service catalog foundation (`duration`, optional `price`/`currency`, booking buffers)
+- Buffer-aware scheduling and overlap validation (`buffer_before`/`buffer_after` applied to blocked intervals)
 - Customer channel identity mapping
 - Provider availability + time-off foundation
+- Provider schedule refinement: split daily windows, date-specific overrides, and time-off-aware slot filtering
 - Appointment create/list/cancel/reschedule
 - Scheduling slot generation service foundation
 - Conversation state / message log / notification data foundations
@@ -197,10 +200,13 @@ Initial tests cover:
 - `organization-members`: add/list/update/deactivate
 - `providers`: create/list/get/update/activate/deactivate
 - `services`: create/list/get/update/activate/deactivate
+  - provider-scoped management: `POST /providers/{provider_id}/services`, `GET /providers/{provider_id}/services`
+  - direct service management: `GET /services/{service_id}`, `PATCH /services/{service_id}`, `DELETE /services/{service_id}`
 - `customers`: create/list/get/update
 - `customer-identities`: create/list
 - `provider-availability`: create/list/update/delete
 - `provider-time-off`: create/list/update/delete
+- `provider-date-overrides`: create/list/update/delete
 - `scheduling`: provider slots by date range
 - `appointments`: create/list/get/cancel/reschedule
 - `admin`: minimal admin-only placeholder endpoints

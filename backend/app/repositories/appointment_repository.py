@@ -76,15 +76,20 @@ class AppointmentRepository:
         self,
         *,
         provider_id: int,
-        start_datetime: datetime,
-        end_datetime: datetime,
+        start_datetime: datetime | None = None,
+        end_datetime: datetime | None = None,
+        exclude_appointment_id: int | None = None,
     ) -> list[Appointment]:
         stmt = select(Appointment).where(
             Appointment.provider_id == provider_id,
             Appointment.status.in_(BLOCKING_STATUSES),
-            Appointment.start_datetime < end_datetime,
-            Appointment.end_datetime > start_datetime,
         )
+        if start_datetime is not None:
+            stmt = stmt.where(Appointment.end_datetime > start_datetime)
+        if end_datetime is not None:
+            stmt = stmt.where(Appointment.start_datetime < end_datetime)
+        if exclude_appointment_id is not None:
+            stmt = stmt.where(Appointment.id != exclude_appointment_id)
         return list(self.db.scalars(stmt))
 
     def update(self, appointment: Appointment, *, auto_commit: bool = True, **kwargs) -> Appointment:
