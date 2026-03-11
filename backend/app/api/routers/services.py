@@ -51,7 +51,7 @@ def list_services(
 ) -> list[ServiceRead]:
     if organization_id is not None:
         require_org_membership(db, organization_id=organization_id, user=current_user)
-    services = ServiceRepository(db).list(organization_id=organization_id, provider_id=provider_id)
+    services = ServiceRepository(db).list_services(organization_id=organization_id, provider_id=provider_id)
     return [ServiceRead.model_validate(service) for service in services]
 
 

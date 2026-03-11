@@ -32,7 +32,7 @@ def list_customers(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_active_user),
 ) -> list[CustomerRead]:
-    customers = CustomerRepository(db).list()
+    customers = CustomerRepository(db).list_customers()
     return [CustomerRead.model_validate(customer) for customer in customers]
 
 

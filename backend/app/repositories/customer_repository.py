@@ -23,7 +23,7 @@ class CustomerRepository:
     def get(self, customer_id: int) -> Customer | None:
         return self.db.get(Customer, customer_id)
 
-    def list(self) -> list[Customer]:
+    def list_customers(self) -> list[Customer]:
         stmt = select(Customer).order_by(Customer.id.asc())
         return list(self.db.scalars(stmt))
 

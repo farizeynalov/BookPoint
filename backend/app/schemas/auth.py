@@ -1,12 +1,10 @@
 from datetime import datetime
 
-from pydantic import EmailStr
-
 from app.schemas.common import ORMModel
 
 
 class LoginRequest(ORMModel):
-    email: EmailStr
+    email: str
     password: str
 
 
@@ -18,7 +16,7 @@ class TokenResponse(ORMModel):
 
 class UserRead(ORMModel):
     id: int
-    email: EmailStr
+    email: str
     full_name: str
     phone_number: str | None
     is_active: bool

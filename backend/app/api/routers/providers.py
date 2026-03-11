@@ -46,7 +46,7 @@ def list_providers(
 ) -> list[ProviderRead]:
     if organization_id is not None:
         require_org_membership(db, organization_id=organization_id, user=current_user)
-    providers = ProviderRepository(db).list(organization_id=organization_id)
+    providers = ProviderRepository(db).list_providers(organization_id=organization_id)
     return [ProviderRead.model_validate(provider) for provider in providers]
 
 

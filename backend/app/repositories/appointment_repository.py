@@ -29,7 +29,7 @@ class AppointmentRepository:
         stmt = select(Appointment).where(Appointment.id == appointment_id).with_for_update()
         return self.db.scalar(stmt)
 
-    def list(
+    def list_appointments(
         self,
         organization_id: int | None = None,
         provider_id: int | None = None,

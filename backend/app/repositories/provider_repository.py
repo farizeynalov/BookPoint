@@ -22,7 +22,7 @@ class ProviderRepository:
         stmt = select(Provider).where(Provider.id == provider_id).with_for_update()
         return self.db.scalar(stmt)
 
-    def list(self, organization_id: int | None = None) -> list[Provider]:
+    def list_providers(self, organization_id: int | None = None) -> list[Provider]:
         stmt = select(Provider).order_by(Provider.id.asc())
         if organization_id is not None:
             stmt = stmt.where(Provider.organization_id == organization_id)

@@ -52,13 +52,13 @@ def list_appointments(
     rows = []
     if organization_id is not None:
         require_org_membership(db, organization_id=organization_id, user=current_user)
-        rows = appointment_repo.list(
+        rows = appointment_repo.list_appointments(
             organization_id=organization_id,
             provider_id=provider_id,
             customer_id=customer_id,
         )
     elif current_user.is_platform_admin:
-        rows = appointment_repo.list(provider_id=provider_id, customer_id=customer_id)
+        rows = appointment_repo.list_appointments(provider_id=provider_id, customer_id=customer_id)
     else:
         org_ids = OrganizationMemberRepository(db).list_active_org_ids_for_user(current_user.id)
         rows = appointment_repo.list_by_organization_ids(org_ids)

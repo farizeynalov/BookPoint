@@ -1,4 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timezone
+
+from pydantic import field_serializer, field_validator
 
 from app.models.enums import AppointmentStatus, BookingChannel
 from app.schemas.common import ORMModel, TimestampRead
@@ -34,3 +36,18 @@ class AppointmentRead(TimestampRead):
     status: AppointmentStatus
     booking_channel: BookingChannel
     notes: str | None
+
+    @field_validator("start_datetime", "end_datetime", "created_at", "updated_at", mode="after")
+    @classmethod
+    def normalize_datetime_to_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    @field_serializer("start_datetime", "end_datetime", "created_at", "updated_at")
+    def serialize_datetime_with_explicit_utc_offset(self, value: datetime) -> str:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        else:
+            value = value.astimezone(timezone.utc)
+        return value.isoformat()

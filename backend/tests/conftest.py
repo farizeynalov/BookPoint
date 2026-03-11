@@ -68,5 +68,8 @@ def auth_headers(client: TestClient, seeded_user: User) -> dict[str, str]:
         "/api/v1/auth/login",
         json={"email": seeded_user.email, "password": "password123"},
     )
-    token = response.json()["access_token"]
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert "access_token" in payload, payload
+    token = payload["access_token"]
     return {"Authorization": f"Bearer {token}"}
