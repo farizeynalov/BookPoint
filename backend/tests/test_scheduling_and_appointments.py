@@ -9,6 +9,14 @@ def _next_weekday(target_weekday: int) -> date:
     return today + timedelta(days=delta)
 
 
+def _get_default_location_id(client: TestClient, auth_headers: dict[str, str], organization_id: int) -> int:
+    response = client.get(f"/api/v1/organizations/{organization_id}/locations", headers=auth_headers)
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload
+    return payload[0]["id"]
+
+
 def _bootstrap_provider_setup(client: TestClient, auth_headers: dict[str, str]) -> dict[str, int]:
     org = client.post(
         "/api/v1/organizations",
@@ -22,6 +30,7 @@ def _bootstrap_provider_setup(client: TestClient, auth_headers: dict[str, str]) 
             "is_active": True,
         },
     ).json()
+    location_id = _get_default_location_id(client, auth_headers, org["id"])
     provider = client.post(
         "/api/v1/providers",
         headers=auth_headers,
@@ -81,6 +90,7 @@ def _bootstrap_provider_setup(client: TestClient, auth_headers: dict[str, str]) 
     ).json()
     return {
         "organization_id": org["id"],
+        "location_id": location_id,
         "provider_id": provider["id"],
         "service_id": service["id"],
         "customer_one_id": customer_one["id"],
@@ -98,6 +108,7 @@ def test_slot_generation(client: TestClient, auth_headers: dict[str, str]) -> No
             "start_date": monday.isoformat(),
             "end_date": monday.isoformat(),
             "service_id": data["service_id"],
+            "location_id": data["location_id"],
         },
     )
     assert response.status_code == 200
@@ -115,6 +126,7 @@ def test_appointment_creation_and_overlap_prevention(client: TestClient, auth_he
             "start_date": monday.isoformat(),
             "end_date": monday.isoformat(),
             "service_id": data["service_id"],
+            "location_id": data["location_id"],
         },
     )
     first_slot = slots_response.json()[0]
@@ -126,6 +138,7 @@ def test_appointment_creation_and_overlap_prevention(client: TestClient, auth_he
         headers=auth_headers,
         json={
             "organization_id": data["organization_id"],
+            "location_id": data["location_id"],
             "provider_id": data["provider_id"],
             "service_id": data["service_id"],
             "customer_id": data["customer_one_id"],
@@ -142,6 +155,7 @@ def test_appointment_creation_and_overlap_prevention(client: TestClient, auth_he
         headers=auth_headers,
         json={
             "organization_id": data["organization_id"],
+            "location_id": data["location_id"],
             "provider_id": data["provider_id"],
             "service_id": data["service_id"],
             "customer_id": data["customer_two_id"],
@@ -173,6 +187,7 @@ def test_reschedule_keeps_pending_status(client: TestClient, auth_headers: dict[
             "start_date": monday.isoformat(),
             "end_date": monday.isoformat(),
             "service_id": data["service_id"],
+            "location_id": data["location_id"],
         },
     )
     slots = slots_response.json()
@@ -183,6 +198,7 @@ def test_reschedule_keeps_pending_status(client: TestClient, auth_headers: dict[
         "/api/v1/appointments",
         headers=auth_headers,
         json={
+            "location_id": data["location_id"],
             "provider_id": data["provider_id"],
             "service_id": data["service_id"],
             "customer_id": data["customer_one_id"],
@@ -230,6 +246,7 @@ def test_appointment_rejects_mismatched_organization_id(client: TestClient, auth
             "start_date": monday.isoformat(),
             "end_date": monday.isoformat(),
             "service_id": data["service_id"],
+            "location_id": data["location_id"],
         },
     )
     first_start = datetime.fromisoformat(slots_response.json()[0]["start_datetime"])
@@ -239,6 +256,7 @@ def test_appointment_rejects_mismatched_organization_id(client: TestClient, auth
         headers=auth_headers,
         json={
             "organization_id": other_org["id"],
+            "location_id": data["location_id"],
             "provider_id": data["provider_id"],
             "service_id": data["service_id"],
             "customer_id": data["customer_one_id"],
@@ -262,6 +280,7 @@ def test_cancelled_appointment_cannot_be_rescheduled(client: TestClient, auth_he
             "start_date": monday.isoformat(),
             "end_date": monday.isoformat(),
             "service_id": data["service_id"],
+            "location_id": data["location_id"],
         },
     )
     first_start = datetime.fromisoformat(slots_response.json()[0]["start_datetime"])
@@ -271,6 +290,7 @@ def test_cancelled_appointment_cannot_be_rescheduled(client: TestClient, auth_he
         "/api/v1/appointments",
         headers=auth_headers,
         json={
+            "location_id": data["location_id"],
             "provider_id": data["provider_id"],
             "service_id": data["service_id"],
             "customer_id": data["customer_one_id"],
@@ -308,6 +328,7 @@ def test_new_appointment_status_must_be_pending_or_confirmed(client: TestClient,
             "start_date": monday.isoformat(),
             "end_date": monday.isoformat(),
             "service_id": data["service_id"],
+            "location_id": data["location_id"],
         },
     )
     first_start = datetime.fromisoformat(slots_response.json()[0]["start_datetime"])
@@ -316,6 +337,7 @@ def test_new_appointment_status_must_be_pending_or_confirmed(client: TestClient,
         "/api/v1/appointments",
         headers=auth_headers,
         json={
+            "location_id": data["location_id"],
             "provider_id": data["provider_id"],
             "service_id": data["service_id"],
             "customer_id": data["customer_one_id"],

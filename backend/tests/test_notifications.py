@@ -9,6 +9,7 @@ from app.models.customer import Customer
 from app.models.enums import AppointmentStatus, BookingChannel, NotificationStatus, NotificationType
 from app.models.notification import Notification
 from app.models.organization import Organization
+from app.models.organization_location import OrganizationLocation
 from app.models.provider import Provider
 from app.utils.phone import normalize_phone_number
 from app.workers import tasks as worker_tasks
@@ -18,6 +19,14 @@ def _next_weekday(target_weekday: int) -> date:
     today = date.today()
     delta = (target_weekday - today.weekday()) % 7
     return today + timedelta(days=delta)
+
+
+def _get_default_location_id(client: TestClient, auth_headers: dict[str, str], organization_id: int) -> int:
+    response = client.get(f"/api/v1/organizations/{organization_id}/locations", headers=auth_headers)
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload
+    return payload[0]["id"]
 
 
 def _bootstrap_provider_setup(client: TestClient, auth_headers: dict[str, str]) -> dict[str, int]:
@@ -33,6 +42,7 @@ def _bootstrap_provider_setup(client: TestClient, auth_headers: dict[str, str]) 
             "is_active": True,
         },
     ).json()
+    location_id = _get_default_location_id(client, auth_headers, org["id"])
     provider = client.post(
         "/api/v1/providers",
         headers=auth_headers,
@@ -82,6 +92,7 @@ def _bootstrap_provider_setup(client: TestClient, auth_headers: dict[str, str]) 
     ).json()
     return {
         "organization_id": org["id"],
+        "location_id": location_id,
         "provider_id": provider["id"],
         "service_id": service["id"],
         "customer_id": customer["id"],
@@ -111,6 +122,14 @@ def _create_upcoming_appointment(
         appointment_duration_minutes=30,
         is_active=True,
     )
+    location = OrganizationLocation(
+        organization=organization,
+        name="Main Location",
+        slug=f"main-location-{token}",
+        city="Baku",
+        timezone="Asia/Baku",
+        is_active=True,
+    )
     customer = Customer(
         full_name=f"Notif Customer {token}",
         phone_number=phone,
@@ -122,6 +141,7 @@ def _create_upcoming_appointment(
     end_datetime = start_datetime + timedelta(minutes=30)
     appointment = Appointment(
         organization=organization,
+        location=location,
         provider=provider,
         customer=customer,
         start_datetime=start_datetime,
@@ -150,6 +170,7 @@ def test_appointment_creation_triggers_notification_task(
             "start_date": monday.isoformat(),
             "end_date": monday.isoformat(),
             "service_id": data["service_id"],
+            "location_id": data["location_id"],
         },
     ).json()
 
@@ -163,6 +184,7 @@ def test_appointment_creation_triggers_notification_task(
         "/api/v1/appointments",
         headers=auth_headers,
         json={
+            "location_id": data["location_id"],
             "provider_id": data["provider_id"],
             "service_id": data["service_id"],
             "customer_id": data["customer_id"],
@@ -190,12 +212,14 @@ def test_appointment_cancellation_triggers_notification_task(
             "start_date": monday.isoformat(),
             "end_date": monday.isoformat(),
             "service_id": data["service_id"],
+            "location_id": data["location_id"],
         },
     ).json()
     created = client.post(
         "/api/v1/appointments",
         headers=auth_headers,
         json={
+            "location_id": data["location_id"],
             "provider_id": data["provider_id"],
             "service_id": data["service_id"],
             "customer_id": data["customer_id"],
@@ -235,12 +259,14 @@ def test_appointment_reschedule_triggers_notification_task(
             "start_date": monday.isoformat(),
             "end_date": monday.isoformat(),
             "service_id": data["service_id"],
+            "location_id": data["location_id"],
         },
     ).json()
     created = client.post(
         "/api/v1/appointments",
         headers=auth_headers,
         json={
+            "location_id": data["location_id"],
             "provider_id": data["provider_id"],
             "service_id": data["service_id"],
             "customer_id": data["customer_id"],

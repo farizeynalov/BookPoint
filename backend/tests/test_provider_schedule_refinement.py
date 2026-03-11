@@ -34,6 +34,14 @@ def _local_to_utc_iso(target_date: date, target_time: time) -> str:
     return local_dt.astimezone(timezone.utc).isoformat()
 
 
+def _get_default_location_id(client: TestClient, auth_headers: dict[str, str], organization_id: int) -> int:
+    response = client.get(f"/api/v1/organizations/{organization_id}/locations", headers=auth_headers)
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload
+    return payload[0]["id"]
+
+
 def _create_provider_setup(
     client: TestClient,
     auth_headers: dict[str, str],
@@ -54,6 +62,7 @@ def _create_provider_setup(
             "is_active": True,
         },
     ).json()
+    location_id = _get_default_location_id(client, auth_headers, org["id"])
     provider = client.post(
         "/api/v1/providers",
         headers=auth_headers,
@@ -103,6 +112,7 @@ def _create_provider_setup(
     ).json()
     return {
         "organization_id": org["id"],
+        "location_id": location_id,
         "provider_id": provider["id"],
         "service_id": service["id"],
         "customer_one_id": customer_one["id"],
@@ -185,6 +195,7 @@ def _get_slots(
     *,
     provider_id: int,
     query_date: date,
+    location_id: int,
     service_id: int,
 ) -> list[dict]:
     response = client.get(
@@ -193,6 +204,7 @@ def _get_slots(
         params={
             "start_date": query_date.isoformat(),
             "end_date": query_date.isoformat(),
+            "location_id": location_id,
             "service_id": service_id,
         },
     )
@@ -211,7 +223,14 @@ def test_weekly_availability_creates_usable_slots(client: TestClient, auth_heade
         start_time="09:00:00",
         end_time="11:00:00",
     )
-    slots = _get_slots(client, auth_headers, provider_id=data["provider_id"], query_date=monday, service_id=data["service_id"])
+    slots = _get_slots(
+        client,
+        auth_headers,
+        provider_id=data["provider_id"],
+        query_date=monday,
+        location_id=data["location_id"],
+        service_id=data["service_id"],
+    )
     assert len(slots) == 4
 
 
@@ -220,7 +239,14 @@ def test_multiple_windows_in_one_day_work(client: TestClient, auth_headers: dict
     monday = _next_weekday(0)
     _add_weekly_availability(client, auth_headers, provider_id=data["provider_id"], weekday=0, start_time="09:00:00", end_time="11:00:00")
     _add_weekly_availability(client, auth_headers, provider_id=data["provider_id"], weekday=0, start_time="14:00:00", end_time="16:00:00")
-    slots = _get_slots(client, auth_headers, provider_id=data["provider_id"], query_date=monday, service_id=data["service_id"])
+    slots = _get_slots(
+        client,
+        auth_headers,
+        provider_id=data["provider_id"],
+        query_date=monday,
+        location_id=data["location_id"],
+        service_id=data["service_id"],
+    )
     starts = _local_time_points(slots)
     assert len(starts) == 8
     assert (9, 0) in starts
@@ -232,7 +258,14 @@ def test_split_windows_block_middle_break(client: TestClient, auth_headers: dict
     monday = _next_weekday(0)
     _add_weekly_availability(client, auth_headers, provider_id=data["provider_id"], weekday=0, start_time="09:00:00", end_time="13:00:00")
     _add_weekly_availability(client, auth_headers, provider_id=data["provider_id"], weekday=0, start_time="14:00:00", end_time="18:00:00")
-    slots = _get_slots(client, auth_headers, provider_id=data["provider_id"], query_date=monday, service_id=data["service_id"])
+    slots = _get_slots(
+        client,
+        auth_headers,
+        provider_id=data["provider_id"],
+        query_date=monday,
+        location_id=data["location_id"],
+        service_id=data["service_id"],
+    )
     starts = _local_time_points(slots)
     assert (13, 0) not in starts
     assert (12, 30) in starts
@@ -250,7 +283,14 @@ def test_full_day_unavailable_override_removes_slots(client: TestClient, auth_he
         override_date=monday,
         is_available=False,
     )
-    slots = _get_slots(client, auth_headers, provider_id=data["provider_id"], query_date=monday, service_id=data["service_id"])
+    slots = _get_slots(
+        client,
+        auth_headers,
+        provider_id=data["provider_id"],
+        query_date=monday,
+        location_id=data["location_id"],
+        service_id=data["service_id"],
+    )
     assert slots == []
 
 
@@ -267,7 +307,14 @@ def test_custom_hours_override_replaces_weekly_hours(client: TestClient, auth_he
         start_time="12:00:00",
         end_time="17:00:00",
     )
-    slots = _get_slots(client, auth_headers, provider_id=data["provider_id"], query_date=monday, service_id=data["service_id"])
+    slots = _get_slots(
+        client,
+        auth_headers,
+        provider_id=data["provider_id"],
+        query_date=monday,
+        location_id=data["location_id"],
+        service_id=data["service_id"],
+    )
     starts = _local_time_points(slots)
     assert starts[0] == (12, 0)
     assert starts[-1] == (16, 30)
@@ -285,7 +332,14 @@ def test_time_off_removes_overlapping_slots(client: TestClient, auth_headers: di
         start_datetime=_local_to_utc_iso(monday, time.fromisoformat("10:00:00")),
         end_datetime=_local_to_utc_iso(monday, time.fromisoformat("11:00:00")),
     )
-    slots = _get_slots(client, auth_headers, provider_id=data["provider_id"], query_date=monday, service_id=data["service_id"])
+    slots = _get_slots(
+        client,
+        auth_headers,
+        provider_id=data["provider_id"],
+        query_date=monday,
+        location_id=data["location_id"],
+        service_id=data["service_id"],
+    )
     assert _local_time_points(slots) == [(9, 0), (9, 30), (11, 0), (11, 30)]
 
 
@@ -354,7 +408,14 @@ def test_buffer_aware_scheduling_still_works(client: TestClient, auth_headers: d
     data = _create_provider_setup(client, auth_headers, buffer_before_minutes=15, buffer_after_minutes=15)
     monday = _next_weekday(0)
     _add_weekly_availability(client, auth_headers, provider_id=data["provider_id"], weekday=0, start_time="09:00:00", end_time="11:00:00")
-    slots = _get_slots(client, auth_headers, provider_id=data["provider_id"], query_date=monday, service_id=data["service_id"])
+    slots = _get_slots(
+        client,
+        auth_headers,
+        provider_id=data["provider_id"],
+        query_date=monday,
+        location_id=data["location_id"],
+        service_id=data["service_id"],
+    )
     assert _local_time_points(slots) == [(9, 15), (9, 45), (10, 15)]
 
 
@@ -369,7 +430,14 @@ def test_full_window_time_off_returns_no_slots(client: TestClient, auth_headers:
         start_datetime=_local_to_utc_iso(monday, time.fromisoformat("09:00:00")),
         end_datetime=_local_to_utc_iso(monday, time.fromisoformat("12:00:00")),
     )
-    slots = _get_slots(client, auth_headers, provider_id=data["provider_id"], query_date=monday, service_id=data["service_id"])
+    slots = _get_slots(
+        client,
+        auth_headers,
+        provider_id=data["provider_id"],
+        query_date=monday,
+        location_id=data["location_id"],
+        service_id=data["service_id"],
+    )
     assert slots == []
 
 
@@ -393,7 +461,14 @@ def test_time_off_subtracts_from_override_hours(client: TestClient, auth_headers
         start_datetime=_local_to_utc_iso(monday, time.fromisoformat("13:00:00")),
         end_datetime=_local_to_utc_iso(monday, time.fromisoformat("14:00:00")),
     )
-    slots = _get_slots(client, auth_headers, provider_id=data["provider_id"], query_date=monday, service_id=data["service_id"])
+    slots = _get_slots(
+        client,
+        auth_headers,
+        provider_id=data["provider_id"],
+        query_date=monday,
+        location_id=data["location_id"],
+        service_id=data["service_id"],
+    )
     assert _local_time_points(slots) == [(12, 0), (12, 30), (14, 0), (14, 30)]
 
 
@@ -407,6 +482,7 @@ def test_appointment_creation_respects_refined_schedule(client: TestClient, auth
         "/api/v1/appointments",
         headers=auth_headers,
         json={
+            "location_id": data["location_id"],
             "provider_id": data["provider_id"],
             "service_id": data["service_id"],
             "customer_id": data["customer_one_id"],
@@ -423,6 +499,7 @@ def test_appointment_creation_respects_refined_schedule(client: TestClient, auth
         "/api/v1/appointments",
         headers=auth_headers,
         json={
+            "location_id": data["location_id"],
             "provider_id": data["provider_id"],
             "service_id": data["service_id"],
             "customer_id": data["customer_one_id"],
@@ -439,13 +516,21 @@ def test_rescheduling_respects_refined_schedule(client: TestClient, auth_headers
     data = _create_provider_setup(client, auth_headers)
     monday = _next_weekday(0)
     _add_weekly_availability(client, auth_headers, provider_id=data["provider_id"], weekday=0, start_time="09:00:00", end_time="11:00:00")
-    slots = _get_slots(client, auth_headers, provider_id=data["provider_id"], query_date=monday, service_id=data["service_id"])
+    slots = _get_slots(
+        client,
+        auth_headers,
+        provider_id=data["provider_id"],
+        query_date=monday,
+        location_id=data["location_id"],
+        service_id=data["service_id"],
+    )
     start_datetime = slots[0]["start_datetime"]
 
     create_response = client.post(
         "/api/v1/appointments",
         headers=auth_headers,
         json={
+            "location_id": data["location_id"],
             "provider_id": data["provider_id"],
             "service_id": data["service_id"],
             "customer_id": data["customer_one_id"],

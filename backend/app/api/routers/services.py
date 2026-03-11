@@ -11,8 +11,10 @@ from app.dependencies.auth import (
 from app.models.enums import MembershipRole
 from app.models.user import User
 from app.repositories.organization_member_repository import OrganizationMemberRepository
+from app.repositories.organization_location_repository import OrganizationLocationRepository
 from app.repositories.provider_repository import ProviderRepository
 from app.repositories.provider_service_repository import ProviderServiceRepository
+from app.repositories.service_location_repository import ServiceLocationRepository
 from app.repositories.service_repository import ServiceRepository
 from app.schemas.provider_service import (
     ProviderAssignedServiceRead,
@@ -56,6 +58,8 @@ def create_provider_service(
 
     service_repo = ServiceRepository(db)
     provider_service_repo = ProviderServiceRepository(db)
+    location_repo = OrganizationLocationRepository(db)
+    service_location_repo = ServiceLocationRepository(db)
     require_org_admin_membership(db, organization_id=provider.organization_id, user=current_user)
     if isinstance(payload, ProviderServiceAssignCreate):
         service = service_repo.get(payload.service_id)
@@ -71,6 +75,11 @@ def create_provider_service(
             service_id=service.id,
             duration_minutes_override=payload.duration_minutes_override,
         )
+        active_locations = location_repo.list_by_organization(provider.organization_id, include_inactive=False)
+        for location in active_locations:
+            existing_location_assignment = service_location_repo.get_by_service_and_location(service.id, location.id)
+            if existing_location_assignment is None:
+                service_location_repo.create(service_id=service.id, location_id=location.id)
         return _build_assigned_service_read(service, assignment)
 
     create_data = payload.model_dump()
@@ -85,6 +94,11 @@ def create_provider_service(
             service_id=service.id,
             duration_minutes_override=None,
         )
+        active_locations = location_repo.list_by_organization(provider.organization_id, include_inactive=False)
+        for location in active_locations:
+            existing_location_assignment = service_location_repo.get_by_service_and_location(service.id, location.id)
+            if existing_location_assignment is None:
+                service_location_repo.create(service_id=service.id, location_id=location.id)
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service failed integrity checks")
@@ -134,6 +148,8 @@ def create_service(
 ) -> ServiceRead:
     provider_repo = ProviderRepository(db)
     provider_service_repo = ProviderServiceRepository(db)
+    location_repo = OrganizationLocationRepository(db)
+    service_location_repo = ServiceLocationRepository(db)
     service_repo = ServiceRepository(db)
 
     provider = provider_repo.get(payload.provider_id)
@@ -156,6 +172,11 @@ def create_service(
                 service_id=service.id,
                 duration_minutes_override=None,
             )
+        active_locations = location_repo.list_by_organization(payload.organization_id, include_inactive=False)
+        for location in active_locations:
+            existing_location_assignment = service_location_repo.get_by_service_and_location(service.id, location.id)
+            if existing_location_assignment is None:
+                service_location_repo.create(service_id=service.id, location_id=location.id)
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service failed integrity checks")

@@ -22,6 +22,14 @@ def _find_slot_start(slots: list[dict], *, hour: int, minute: int) -> str:
     raise AssertionError(f"Slot with local start {hour:02d}:{minute:02d} was not found.")
 
 
+def _get_default_location_id(client: TestClient, auth_headers: dict[str, str], organization_id: int) -> int:
+    response = client.get(f"/api/v1/organizations/{organization_id}/locations", headers=auth_headers)
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload
+    return payload[0]["id"]
+
+
 def _create_provider_setup(
     client: TestClient,
     auth_headers: dict[str, str],
@@ -44,6 +52,7 @@ def _create_provider_setup(
             "is_active": True,
         },
     ).json()
+    location_id = _get_default_location_id(client, auth_headers, org["id"])
     provider = client.post(
         "/api/v1/providers",
         headers=auth_headers,
@@ -104,6 +113,7 @@ def _create_provider_setup(
     ).json()
     return {
         "organization_id": org["id"],
+        "location_id": location_id,
         "provider_id": provider["id"],
         "service_id": service["id"],
         "customer_one_id": customer_one["id"],
@@ -116,6 +126,7 @@ def _get_slots(
     auth_headers: dict[str, str],
     provider_id: int,
     monday: date,
+    location_id: int,
     service_id: int | None = None,
 ) -> list[dict]:
     params = {
@@ -124,6 +135,7 @@ def _get_slots(
     }
     if service_id is not None:
         params["service_id"] = service_id
+    params["location_id"] = location_id
     response = client.get(
         f"/api/v1/scheduling/providers/{provider_id}/slots",
         headers=auth_headers,
@@ -136,7 +148,7 @@ def _get_slots(
 def test_service_without_buffers_behaves_like_before(client: TestClient, auth_headers: dict[str, str]) -> None:
     data = _create_provider_setup(client, auth_headers)
     monday = _next_weekday(0)
-    slots = _get_slots(client, auth_headers, data["provider_id"], monday, data["service_id"])
+    slots = _get_slots(client, auth_headers, data["provider_id"], monday, data["location_id"], data["service_id"])
     assert len(slots) == 4
     first_local = _to_local_datetime(slots[0]["start_datetime"])
     assert first_local.hour == 9 and first_local.minute == 0
@@ -145,7 +157,7 @@ def test_service_without_buffers_behaves_like_before(client: TestClient, auth_he
 def test_slot_generation_respects_buffer_before(client: TestClient, auth_headers: dict[str, str]) -> None:
     data = _create_provider_setup(client, auth_headers, buffer_before_minutes=15)
     monday = _next_weekday(0)
-    slots = _get_slots(client, auth_headers, data["provider_id"], monday, data["service_id"])
+    slots = _get_slots(client, auth_headers, data["provider_id"], monday, data["location_id"], data["service_id"])
     local_starts = [(_to_local_datetime(slot["start_datetime"]).hour, _to_local_datetime(slot["start_datetime"]).minute) for slot in slots]
     assert local_starts == [(9, 15), (9, 45), (10, 15)]
 
@@ -153,7 +165,7 @@ def test_slot_generation_respects_buffer_before(client: TestClient, auth_headers
 def test_slot_generation_respects_buffer_after(client: TestClient, auth_headers: dict[str, str]) -> None:
     data = _create_provider_setup(client, auth_headers, buffer_after_minutes=15)
     monday = _next_weekday(0)
-    slots = _get_slots(client, auth_headers, data["provider_id"], monday, data["service_id"])
+    slots = _get_slots(client, auth_headers, data["provider_id"], monday, data["location_id"], data["service_id"])
     local_starts = [(_to_local_datetime(slot["start_datetime"]).hour, _to_local_datetime(slot["start_datetime"]).minute) for slot in slots]
     assert local_starts == [(9, 0), (9, 30), (10, 0)]
 
@@ -168,14 +180,14 @@ def test_slot_rejected_when_full_block_exceeds_availability(client: TestClient, 
         availability_end="10:00:00",
     )
     monday = _next_weekday(0)
-    slots = _get_slots(client, auth_headers, data["provider_id"], monday, data["service_id"])
+    slots = _get_slots(client, auth_headers, data["provider_id"], monday, data["location_id"], data["service_id"])
     assert slots == []
 
 
 def test_existing_appointment_buffers_block_nearby_slots(client: TestClient, auth_headers: dict[str, str]) -> None:
     data = _create_provider_setup(client, auth_headers, buffer_after_minutes=30)
     monday = _next_weekday(0)
-    initial_slots = _get_slots(client, auth_headers, data["provider_id"], monday, data["service_id"])
+    initial_slots = _get_slots(client, auth_headers, data["provider_id"], monday, data["location_id"], data["service_id"])
     first_start = _find_slot_start(initial_slots, hour=9, minute=30)
     blocked_candidate = _find_slot_start(initial_slots, hour=10, minute=0)
 
@@ -183,6 +195,7 @@ def test_existing_appointment_buffers_block_nearby_slots(client: TestClient, aut
         "/api/v1/appointments",
         headers=auth_headers,
         json={
+            "location_id": data["location_id"],
             "provider_id": data["provider_id"],
             "service_id": data["service_id"],
             "customer_id": data["customer_one_id"],
@@ -194,7 +207,7 @@ def test_existing_appointment_buffers_block_nearby_slots(client: TestClient, aut
     )
     assert create_response.status_code == 201
 
-    updated_slots = _get_slots(client, auth_headers, data["provider_id"], monday, data["service_id"])
+    updated_slots = _get_slots(client, auth_headers, data["provider_id"], monday, data["location_id"], data["service_id"])
     updated_starts = {slot["start_datetime"] for slot in updated_slots}
     assert blocked_candidate not in updated_starts
 
@@ -202,7 +215,7 @@ def test_existing_appointment_buffers_block_nearby_slots(client: TestClient, aut
 def test_create_rejects_overlap_caused_only_by_buffers(client: TestClient, auth_headers: dict[str, str]) -> None:
     data = _create_provider_setup(client, auth_headers, buffer_after_minutes=30)
     monday = _next_weekday(0)
-    slots = _get_slots(client, auth_headers, data["provider_id"], monday, data["service_id"])
+    slots = _get_slots(client, auth_headers, data["provider_id"], monday, data["location_id"], data["service_id"])
     first_start = _find_slot_start(slots, hour=9, minute=30)
     buffered_overlap_start = _find_slot_start(slots, hour=10, minute=0)
 
@@ -210,6 +223,7 @@ def test_create_rejects_overlap_caused_only_by_buffers(client: TestClient, auth_
         "/api/v1/appointments",
         headers=auth_headers,
         json={
+            "location_id": data["location_id"],
             "provider_id": data["provider_id"],
             "service_id": data["service_id"],
             "customer_id": data["customer_one_id"],
@@ -225,6 +239,7 @@ def test_create_rejects_overlap_caused_only_by_buffers(client: TestClient, auth_
         "/api/v1/appointments",
         headers=auth_headers,
         json={
+            "location_id": data["location_id"],
             "provider_id": data["provider_id"],
             "service_id": data["service_id"],
             "customer_id": data["customer_two_id"],
@@ -247,7 +262,7 @@ def test_reschedule_rejects_overlap_caused_only_by_buffers(client: TestClient, a
         availability_end="12:00:00",
     )
     monday = _next_weekday(0)
-    slots = _get_slots(client, auth_headers, data["provider_id"], monday, data["service_id"])
+    slots = _get_slots(client, auth_headers, data["provider_id"], monday, data["location_id"], data["service_id"])
     first_start = _find_slot_start(slots, hour=9, minute=15)
     second_start = _find_slot_start(slots, hour=10, minute=45)
     overlap_on_reschedule_start = _find_slot_start(slots, hour=9, minute=45)
@@ -256,6 +271,7 @@ def test_reschedule_rejects_overlap_caused_only_by_buffers(client: TestClient, a
         "/api/v1/appointments",
         headers=auth_headers,
         json={
+            "location_id": data["location_id"],
             "provider_id": data["provider_id"],
             "service_id": data["service_id"],
             "customer_id": data["customer_one_id"],
@@ -270,6 +286,7 @@ def test_reschedule_rejects_overlap_caused_only_by_buffers(client: TestClient, a
         "/api/v1/appointments",
         headers=auth_headers,
         json={
+            "location_id": data["location_id"],
             "provider_id": data["provider_id"],
             "service_id": data["service_id"],
             "customer_id": data["customer_two_id"],
@@ -294,13 +311,14 @@ def test_reschedule_rejects_overlap_caused_only_by_buffers(client: TestClient, a
 def test_appointment_end_datetime_remains_visible_duration_only(client: TestClient, auth_headers: dict[str, str]) -> None:
     data = _create_provider_setup(client, auth_headers, buffer_before_minutes=10, buffer_after_minutes=20)
     monday = _next_weekday(0)
-    slots = _get_slots(client, auth_headers, data["provider_id"], monday, data["service_id"])
+    slots = _get_slots(client, auth_headers, data["provider_id"], monday, data["location_id"], data["service_id"])
     start_datetime = slots[0]["start_datetime"]
 
     create_response = client.post(
         "/api/v1/appointments",
         headers=auth_headers,
         json={
+            "location_id": data["location_id"],
             "provider_id": data["provider_id"],
             "service_id": data["service_id"],
             "customer_id": data["customer_one_id"],
@@ -323,6 +341,10 @@ def test_slot_generation_requires_service_id(client: TestClient, auth_headers: d
     response = client.get(
         f"/api/v1/scheduling/providers/{data['provider_id']}/slots",
         headers=auth_headers,
-        params={"start_date": monday.isoformat(), "end_date": monday.isoformat()},
+        params={
+            "start_date": monday.isoformat(),
+            "end_date": monday.isoformat(),
+            "location_id": data["location_id"],
+        },
     )
     assert response.status_code == 422

@@ -18,6 +18,7 @@ class Organization(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     members = relationship("OrganizationMember", back_populates="organization", cascade="all, delete-orphan")
+    locations = relationship("OrganizationLocation", back_populates="organization", cascade="all, delete-orphan")
     providers = relationship("Provider", back_populates="organization", cascade="all, delete-orphan")
     services = relationship("Service", back_populates="organization", cascade="all, delete-orphan")
     appointments = relationship("Appointment", back_populates="organization", cascade="all, delete-orphan")

@@ -7,8 +7,11 @@ from sqlalchemy.orm import Session
 from app.models.enums import AppointmentStatus
 from app.repositories.appointment_repository import AppointmentRepository
 from app.repositories.customer_repository import CustomerRepository
+from app.repositories.organization_location_repository import OrganizationLocationRepository
 from app.repositories.organization_repository import OrganizationRepository
+from app.repositories.provider_location_repository import ProviderLocationRepository
 from app.repositories.provider_repository import ProviderRepository
+from app.repositories.service_location_repository import ServiceLocationRepository
 from app.repositories.service_repository import ServiceRepository
 from app.schemas.appointment import AppointmentCreate
 from app.services.notifications.dispatcher import (
@@ -31,26 +34,40 @@ class AppointmentService:
     def __init__(self, db: Session):
         self.db = db
         self.organization_repo = OrganizationRepository(db)
+        self.location_repo = OrganizationLocationRepository(db)
         self.provider_repo = ProviderRepository(db)
+        self.provider_location_repo = ProviderLocationRepository(db)
         self.service_repo = ServiceRepository(db)
+        self.service_location_repo = ServiceLocationRepository(db)
         self.customer_repo = CustomerRepository(db)
         self.appointment_repo = AppointmentRepository(db)
         self.scheduling_service = SchedulingService(db)
 
-    def _resolve_service_timing(self, provider_id: int, service_id: int | None):
+    def _resolve_service_timing(self, provider_id: int, service_id: int | None, location_id: int):
         return self.scheduling_service.resolve_service_timing(
             provider_id=provider_id,
+            location_id=location_id,
             service_id=service_id,
             require_active_service=True,
+            require_active_location=True,
         )
 
-    def _assert_slot_is_available(self, *, provider_id: int, start_datetime, end_datetime, service_id: int | None) -> None:
+    def _assert_slot_is_available(
+        self,
+        *,
+        provider_id: int,
+        location_id: int,
+        start_datetime,
+        end_datetime,
+        service_id: int | None,
+    ) -> None:
         provider = self.provider_repo.get(provider_id)
         if provider is None:
             raise ValueError("Provider not found.")
         slot_date = start_datetime.astimezone(ZoneInfo(provider.organization.timezone)).date()
         slots = self.scheduling_service.get_available_slots(
             provider_id=provider_id,
+            location_id=location_id,
             start_date=slot_date,
             end_date=slot_date,
             service_id=service_id,
@@ -77,6 +94,18 @@ class AppointmentService:
             if organization is None or not organization.is_active:
                 raise ValueError("Organization not found or inactive.")
 
+            location = self.location_repo.get(payload.location_id)
+            if location is None or not location.is_active:
+                raise ValueError("Location not found or inactive.")
+            if location.organization_id != organization_id:
+                raise ValueError("Provider and location organization mismatch.")
+            provider_location = self.provider_location_repo.get_by_provider_and_location(
+                provider_id=provider.id,
+                location_id=location.id,
+            )
+            if provider_location is None:
+                raise ValueError("Provider is not assigned to the selected location.")
+
             customer = self.customer_repo.get(payload.customer_id)
             if customer is None:
                 raise ValueError("Customer not found.")
@@ -87,8 +116,14 @@ class AppointmentService:
                     raise ValueError("Service not found or inactive.")
                 if service.organization_id != organization_id:
                     raise ValueError("Service and provider organization mismatch.")
+                service_location = self.service_location_repo.get_by_service_and_location(
+                    service_id=service.id,
+                    location_id=location.id,
+                )
+                if service_location is None:
+                    raise ValueError("Service is not available at the selected location.")
 
-            timing = self._resolve_service_timing(provider.id, payload.service_id)
+            timing = self._resolve_service_timing(provider.id, payload.service_id, payload.location_id)
             end_datetime = start_datetime + timedelta(minutes=timing.visible_duration_minutes)
             blocked_start, blocked_end = self.scheduling_service.compute_blocked_interval(
                 visible_start=start_datetime,
@@ -106,6 +141,7 @@ class AppointmentService:
 
             self._assert_slot_is_available(
                 provider_id=provider.id,
+                location_id=payload.location_id,
                 start_datetime=start_datetime,
                 end_datetime=end_datetime,
                 service_id=payload.service_id,
@@ -114,6 +150,7 @@ class AppointmentService:
             appointment = self.appointment_repo.create(
                 auto_commit=False,
                 organization_id=organization_id,
+                location_id=location.id,
                 provider_id=provider.id,
                 service_id=payload.service_id,
                 customer_id=payload.customer_id,
@@ -176,7 +213,11 @@ class AppointmentService:
             if provider is None or not provider.is_active:
                 raise ValueError("Provider not found or inactive.")
 
-            timing = self._resolve_service_timing(appointment.provider_id, appointment.service_id)
+            timing = self._resolve_service_timing(
+                appointment.provider_id,
+                appointment.service_id,
+                appointment.location_id,
+            )
             end_datetime = start_datetime + timedelta(minutes=timing.visible_duration_minutes)
             blocked_start, blocked_end = self.scheduling_service.compute_blocked_interval(
                 visible_start=start_datetime,
@@ -195,6 +236,7 @@ class AppointmentService:
 
             self._assert_slot_is_available(
                 provider_id=appointment.provider_id,
+                location_id=appointment.location_id,
                 start_datetime=start_datetime,
                 end_datetime=end_datetime,
                 service_id=appointment.service_id,

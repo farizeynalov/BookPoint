@@ -19,6 +19,7 @@ def get_available_slots(
     start_date: date = Query(...),
     end_date: date = Query(...),
     service_id: int = Query(...),
+    location_id: int = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> list[SlotRead]:
@@ -31,6 +32,7 @@ def get_available_slots(
     try:
         slots = scheduling_service.get_available_slots(
             provider_id=provider_id,
+            location_id=location_id,
             start_date=start_date,
             end_date=end_date,
             service_id=service_id,

@@ -37,6 +37,14 @@ def _auth_headers(client: TestClient, *, email: str, password: str = "password12
     return {"Authorization": f"Bearer {token}"}
 
 
+def _get_default_location_id(client: TestClient, headers: dict[str, str], organization_id: int) -> int:
+    response = client.get(f"/api/v1/organizations/{organization_id}/locations", headers=headers)
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload
+    return payload[0]["id"]
+
+
 def _create_org(client: TestClient, headers: dict[str, str], *, name: str) -> dict:
     response = client.post(
         "/api/v1/organizations",
@@ -44,7 +52,9 @@ def _create_org(client: TestClient, headers: dict[str, str], *, name: str) -> di
         json={"name": name},
     )
     assert response.status_code == 201, response.text
-    return response.json()
+    payload = response.json()
+    payload["location_id"] = _get_default_location_id(client, headers, payload["id"])
+    return payload
 
 
 def _create_provider(client: TestClient, headers: dict[str, str], *, organization_id: int, display_name: str = "Provider One") -> dict:
@@ -244,7 +254,12 @@ def test_appointment_cannot_mix_organizations(client: TestClient, auth_headers: 
     slots = client.get(
         f"/api/v1/scheduling/providers/{provider_one['id']}/slots",
         headers=auth_headers,
-        params={"start_date": monday.isoformat(), "end_date": monday.isoformat(), "service_id": service_one["id"]},
+        params={
+            "start_date": monday.isoformat(),
+            "end_date": monday.isoformat(),
+            "service_id": service_one["id"],
+            "location_id": org_one["location_id"],
+        },
     ).json()
     start_datetime = datetime.fromisoformat(slots[0]["start_datetime"])
 
@@ -252,6 +267,7 @@ def test_appointment_cannot_mix_organizations(client: TestClient, auth_headers: 
         "/api/v1/appointments",
         headers=auth_headers,
         json={
+            "location_id": org_one["location_id"],
             "provider_id": provider_one["id"],
             "service_id": service_two["id"],
             "customer_id": customer["id"],
@@ -344,7 +360,12 @@ def test_permission_enforcement_staff_cannot_manage_org_but_can_create_appointme
     slots = client.get(
         f"/api/v1/scheduling/providers/{provider['id']}/slots",
         headers=staff_headers,
-        params={"start_date": monday.isoformat(), "end_date": monday.isoformat(), "service_id": service["id"]},
+        params={
+            "start_date": monday.isoformat(),
+            "end_date": monday.isoformat(),
+            "service_id": service["id"],
+            "location_id": org["location_id"],
+        },
     ).json()
     start_datetime = slots[0]["start_datetime"]
 
@@ -352,6 +373,7 @@ def test_permission_enforcement_staff_cannot_manage_org_but_can_create_appointme
         "/api/v1/appointments",
         headers=staff_headers,
         json={
+            "location_id": org["location_id"],
             "provider_id": provider["id"],
             "service_id": service["id"],
             "customer_id": customer["id"],

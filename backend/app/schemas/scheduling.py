@@ -10,6 +10,7 @@ class SlotRead(ORMModel):
 
 class SlotQuery(ORMModel):
     provider_id: int
+    location_id: int
     start_date: date
     end_date: date
-    service_id: int | None = None
+    service_id: int

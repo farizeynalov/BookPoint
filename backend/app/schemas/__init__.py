@@ -4,6 +4,12 @@ from app.schemas.auth import LoginRequest, TokenResponse, UserRead
 from app.schemas.customer import CustomerCreate, CustomerRead, CustomerUpdate
 from app.schemas.customer_channel_identity import CustomerChannelIdentityCreate, CustomerChannelIdentityRead
 from app.schemas.organization import OrganizationCreate, OrganizationRead, OrganizationUpdate
+from app.schemas.organization_location import (
+    LocationAssignmentCreate,
+    OrganizationLocationCreate,
+    OrganizationLocationRead,
+    OrganizationLocationUpdate,
+)
 from app.schemas.organization_member import (
     OrganizationMemberCreate,
     OrganizationMemberRead,
@@ -49,6 +55,10 @@ __all__ = [
     "CustomerUpdate",
     "LoginRequest",
     "OrganizationCreate",
+    "LocationAssignmentCreate",
+    "OrganizationLocationCreate",
+    "OrganizationLocationRead",
+    "OrganizationLocationUpdate",
     "OrganizationMemberCreate",
     "OrganizationMemberRead",
     "OrganizationMemberUpdate",

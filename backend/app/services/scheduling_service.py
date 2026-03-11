@@ -7,10 +7,13 @@ from sqlalchemy.orm import Session
 from app.repositories.appointment_repository import AppointmentRepository
 from app.repositories.provider_availability_repository import ProviderAvailabilityRepository
 from app.repositories.provider_date_override_repository import ProviderDateOverrideRepository
+from app.repositories.provider_location_repository import ProviderLocationRepository
 from app.repositories.provider_repository import ProviderRepository
 from app.repositories.provider_service_repository import ProviderServiceRepository
 from app.repositories.provider_time_off_repository import ProviderTimeOffRepository
+from app.repositories.service_location_repository import ServiceLocationRepository
 from app.repositories.service_repository import ServiceRepository
+from app.repositories.organization_location_repository import OrganizationLocationRepository
 from app.utils.datetime import daterange
 
 
@@ -48,7 +51,10 @@ class SchedulingService:
         self.db = db
         self.provider_repo = ProviderRepository(db)
         self.service_repo = ServiceRepository(db)
+        self.location_repo = OrganizationLocationRepository(db)
+        self.provider_location_repo = ProviderLocationRepository(db)
         self.provider_service_repo = ProviderServiceRepository(db)
+        self.service_location_repo = ServiceLocationRepository(db)
         self.availability_repo = ProviderAvailabilityRepository(db)
         self.date_override_repo = ProviderDateOverrideRepository(db)
         self.time_off_repo = ProviderTimeOffRepository(db)
@@ -58,12 +64,30 @@ class SchedulingService:
         self,
         *,
         provider_id: int,
+        location_id: int,
         service_id: int | None,
         require_active_service: bool = True,
+        require_active_location: bool = True,
     ) -> ServiceTiming:
         provider = self.provider_repo.get(provider_id)
         if provider is None:
             raise ValueError("Provider not found.")
+
+        location = self.location_repo.get(location_id)
+        if location is None:
+            raise ValueError("Location not found.")
+        if require_active_location and not location.is_active:
+            raise ValueError("Location not found or inactive.")
+        if location.organization_id != provider.organization_id:
+            raise ValueError("Provider and location organization mismatch.")
+
+        provider_location = self.provider_location_repo.get_by_provider_and_location(
+            provider_id=provider.id,
+            location_id=location.id,
+        )
+        if provider_location is None:
+            raise ValueError("Provider is not assigned to the selected location.")
+
         if service_id is None:
             return ServiceTiming(
                 visible_duration_minutes=provider.appointment_duration_minutes,
@@ -76,14 +100,20 @@ class SchedulingService:
             raise ValueError("Service not found or inactive.")
         if require_active_service and not service.is_active:
             raise ValueError("Service not found or inactive.")
-        if service.organization_id != provider.organization_id:
-            raise ValueError("Service and provider organization mismatch.")
+        if service.organization_id != provider.organization_id or service.organization_id != location.organization_id:
+            raise ValueError("Service, provider, and location organization mismatch.")
         provider_service = self.provider_service_repo.get_by_provider_and_service(
             provider_id=provider.id,
             service_id=service.id,
         )
         if provider_service is None:
             raise ValueError("Provider is not assigned to the selected service.")
+        service_location = self.service_location_repo.get_by_service_and_location(
+            service_id=service.id,
+            location_id=location.id,
+        )
+        if service_location is None:
+            raise ValueError("Service is not available at the selected location.")
         duration_minutes = provider_service.duration_minutes_override or service.duration_minutes
         return ServiceTiming(
             visible_duration_minutes=duration_minutes,
@@ -181,6 +211,7 @@ class SchedulingService:
         self,
         *,
         provider_id: int,
+        location_id: int,
         start_date: date,
         end_date: date,
         service_id: int | None = None,
@@ -198,8 +229,10 @@ class SchedulingService:
 
         timing = self.resolve_service_timing(
             provider_id=provider_id,
+            location_id=location_id,
             service_id=service_id,
             require_active_service=True,
+            require_active_location=True,
         )
         visible_duration = timedelta(minutes=timing.visible_duration_minutes)
         buffer_before = timedelta(minutes=timing.buffer_before_minutes)

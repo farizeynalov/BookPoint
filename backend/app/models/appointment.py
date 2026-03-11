@@ -18,6 +18,11 @@ class Appointment(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    location_id: Mapped[int] = mapped_column(
+        ForeignKey("organization_locations.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
     provider_id: Mapped[int] = mapped_column(ForeignKey("providers.id", ondelete="CASCADE"), nullable=False, index=True)
     service_id: Mapped[int | None] = mapped_column(ForeignKey("services.id", ondelete="SET NULL"), nullable=True, index=True)
     customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -37,6 +42,7 @@ class Appointment(Base, TimestampMixin):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     organization = relationship("Organization", back_populates="appointments")
+    location = relationship("OrganizationLocation", back_populates="appointments")
     provider = relationship("Provider", back_populates="appointments")
     service = relationship("Service", back_populates="appointments")
     customer = relationship("Customer", back_populates="appointments")

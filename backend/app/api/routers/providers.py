@@ -11,7 +11,9 @@ from app.dependencies.auth import (
 from app.models.enums import MembershipRole
 from app.models.user import User
 from app.repositories.organization_member_repository import OrganizationMemberRepository
+from app.repositories.organization_location_repository import OrganizationLocationRepository
 from app.repositories.organization_repository import OrganizationRepository
+from app.repositories.provider_location_repository import ProviderLocationRepository
 from app.repositories.provider_repository import ProviderRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.provider import ProviderCreate, ProviderRead, ProviderUpdate
@@ -26,7 +28,9 @@ def create_provider(
     current_user: User = Depends(get_current_active_user),
 ) -> ProviderRead:
     org_repo = OrganizationRepository(db)
+    location_repo = OrganizationLocationRepository(db)
     provider_repo = ProviderRepository(db)
+    provider_location_repo = ProviderLocationRepository(db)
     user_repo = UserRepository(db)
     member_repo = OrganizationMemberRepository(db)
 
@@ -42,6 +46,11 @@ def create_provider(
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Provider user is already linked")
+    active_locations = location_repo.list_by_organization(payload.organization_id, include_inactive=False)
+    for location in active_locations:
+        existing_assignment = provider_location_repo.get_by_provider_and_location(provider.id, location.id)
+        if existing_assignment is None:
+            provider_location_repo.create(provider_id=provider.id, location_id=location.id)
 
     if payload.user_id is not None:
         existing = member_repo.get_by_org_and_user(payload.organization_id, payload.user_id)

@@ -12,6 +12,7 @@ from app.models.enums import MembershipRole
 from app.models.organization import Organization
 from app.models.user import User
 from app.repositories.organization_member_repository import OrganizationMemberRepository
+from app.repositories.organization_location_repository import OrganizationLocationRepository
 from app.repositories.organization_repository import OrganizationRepository
 from app.schemas.organization import OrganizationCreate, OrganizationRead, OrganizationUpdate
 
@@ -26,7 +27,17 @@ def create_organization(
 ) -> OrganizationRead:
     org_repo = OrganizationRepository(db)
     member_repo = OrganizationMemberRepository(db)
+    location_repo = OrganizationLocationRepository(db)
     organization = org_repo.create(**payload.model_dump())
+    location_repo.create(
+        organization_id=organization.id,
+        name="Main Location",
+        slug="main-location",
+        address_line_1=organization.address,
+        city=organization.city,
+        timezone=organization.timezone,
+        is_active=True,
+    )
 
     existing = member_repo.get_by_org_and_user(organization.id, current_user.id)
     if existing is None:

@@ -34,10 +34,20 @@ def _auth_headers(client: TestClient, *, email: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _get_default_location_id(client: TestClient, headers: dict[str, str], organization_id: int) -> int:
+    response = client.get(f"/api/v1/organizations/{organization_id}/locations", headers=headers)
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload
+    return payload[0]["id"]
+
+
 def _create_org(client: TestClient, headers: dict[str, str], *, name: str = "Capabilities Org") -> dict:
     response = client.post("/api/v1/organizations", headers=headers, json={"name": name})
     assert response.status_code == 201, response.text
-    return response.json()
+    payload = response.json()
+    payload["location_id"] = _get_default_location_id(client, headers, payload["id"])
+    return payload
 
 
 def _create_provider(
@@ -265,6 +275,7 @@ def test_appointment_rejected_when_provider_cannot_perform_service(client: TestC
         "/api/v1/appointments",
         headers=auth_headers,
         json={
+            "location_id": org["location_id"],
             "provider_id": provider_two["id"],
             "service_id": service["id"],
             "customer_id": customer["id"],
@@ -314,7 +325,12 @@ def test_slot_generation_respects_provider_duration_override(client: TestClient,
     slots_response = client.get(
         f"/api/v1/scheduling/providers/{provider_two['id']}/slots",
         headers=auth_headers,
-        params={"start_date": monday.isoformat(), "end_date": monday.isoformat(), "service_id": service["id"]},
+        params={
+            "start_date": monday.isoformat(),
+            "end_date": monday.isoformat(),
+            "service_id": service["id"],
+            "location_id": org["location_id"],
+        },
     )
     assert slots_response.status_code == 200, slots_response.text
     slots = slots_response.json()

@@ -8,6 +8,7 @@ from app.schemas.common import ORMModel, TimestampRead
 
 class AppointmentCreate(ORMModel):
     organization_id: int | None = None
+    location_id: int
     provider_id: int
     service_id: int | None = None
     customer_id: int
@@ -28,6 +29,7 @@ class AppointmentCancel(ORMModel):
 class AppointmentRead(TimestampRead):
     id: int
     organization_id: int
+    location_id: int
     provider_id: int
     service_id: int | None
     customer_id: int
