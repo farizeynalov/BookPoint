@@ -13,6 +13,7 @@ from app.services.notifications.dispatcher import (
     enqueue_refund_initiated_notification,
     enqueue_refund_succeeded_notification,
 )
+from app.services.payments.earning_service import EarningService
 from app.services.payments.mock_provider import MockRefundProvider
 
 
@@ -24,6 +25,7 @@ class RefundService:
         self.db = db
         self.payment_repo = PaymentRepository(db)
         self.refund_repo = RefundRepository(db)
+        self.earning_service = EarningService(db)
         self._providers = {
             "mock": MockRefundProvider(),
         }
@@ -109,6 +111,11 @@ class RefundService:
                         auto_commit=False,
                         status=PaymentStatus.REFUNDED,
                     )
+                self.earning_service.apply_refund_adjustment_for_payment(
+                    payment_id=payment.id,
+                    refund_amount_minor=int(updated.amount_minor),
+                    auto_commit=False,
+                )
             self.db.commit()
         except Exception:
             self.db.rollback()

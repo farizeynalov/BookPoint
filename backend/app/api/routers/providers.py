@@ -13,12 +13,26 @@ from app.models.user import User
 from app.repositories.organization_member_repository import OrganizationMemberRepository
 from app.repositories.organization_location_repository import OrganizationLocationRepository
 from app.repositories.organization_repository import OrganizationRepository
+from app.repositories.provider_earning_repository import ProviderEarningRepository
 from app.repositories.provider_location_repository import ProviderLocationRepository
 from app.repositories.provider_repository import ProviderRepository
 from app.repositories.user_repository import UserRepository
+from app.schemas.payout import ProviderEarningRead
 from app.schemas.provider import ProviderCreate, ProviderRead, ProviderUpdate
 
 router = APIRouter()
+EARNING_VIEW_ROLES = (MembershipRole.OWNER, MembershipRole.ADMIN, MembershipRole.STAFF)
+
+
+def _require_provider_earnings_access(db: Session, *, provider, user: User) -> None:
+    membership = require_org_membership(db, organization_id=provider.organization_id, user=user)
+    if user.is_platform_admin:
+        return
+    if membership.role in EARNING_VIEW_ROLES:
+        return
+    if membership.role == MembershipRole.PROVIDER and provider.user_id == user.id:
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient organization role")
 
 
 @router.post("", response_model=ProviderRead, status_code=status.HTTP_201_CREATED)
@@ -96,6 +110,20 @@ def get_provider(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider not found")
     require_org_membership(db, organization_id=provider.organization_id, user=current_user)
     return ProviderRead.model_validate(provider)
+
+
+@router.get("/{provider_id}/earnings", response_model=list[ProviderEarningRead])
+def list_provider_earnings(
+    provider_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> list[ProviderEarningRead]:
+    provider = ProviderRepository(db).get(provider_id)
+    if provider is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider not found")
+    _require_provider_earnings_access(db, provider=provider, user=current_user)
+    earnings = ProviderEarningRepository(db).list_by_provider(provider_id)
+    return [ProviderEarningRead.model_validate(earning) for earning in earnings]
 
 
 @router.patch("/{provider_id}", response_model=ProviderRead)

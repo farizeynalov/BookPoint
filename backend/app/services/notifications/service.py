@@ -26,13 +26,7 @@ def _build_payload(*, event: str, appointment: Appointment) -> dict[str, int | s
 
 
 def _log_placeholder(payload: dict[str, int | str]) -> None:
-    logger.info(
-        "notification_placeholder event=%s appointment_id=%s provider_id=%s customer_id=%s",
-        payload["event"],
-        payload["appointment_id"],
-        payload["provider_id"],
-        payload["customer_id"],
-    )
+    logger.info("notification_placeholder %s", payload)
 
 
 def send_booking_confirmation(appointment: Appointment) -> dict[str, int | str]:
@@ -97,5 +91,44 @@ def send_refund_succeeded(appointment: Appointment) -> dict[str, int | str]:
 
 def send_refund_failed(appointment: Appointment) -> dict[str, int | str]:
     payload = _build_payload(event="refund_failed", appointment=appointment)
+    _log_placeholder(payload)
+    return payload
+
+
+def send_earning_created(appointment: Appointment) -> dict[str, int | str]:
+    payload = _build_payload(event="earning_created", appointment=appointment)
+    _log_placeholder(payload)
+    return payload
+
+
+def _build_payout_payload(*, event: str, payout) -> dict[str, int | str]:
+    now = datetime.now(timezone.utc)
+    payload: dict[str, int | str] = {
+        "event": event,
+        "payout_id": payout.id,
+        "provider_id": payout.provider_id,
+        "total_amount_minor": int(payout.total_amount_minor),
+        "currency": payout.currency,
+        "timestamp": now.isoformat(),
+    }
+    if payout.provider_payout_reference:
+        payload["provider_payout_reference"] = payout.provider_payout_reference
+    return payload
+
+
+def send_payout_created(payout) -> dict[str, int | str]:
+    payload = _build_payout_payload(event="payout_created", payout=payout)
+    _log_placeholder(payload)
+    return payload
+
+
+def send_payout_completed(payout) -> dict[str, int | str]:
+    payload = _build_payout_payload(event="payout_completed", payout=payout)
+    _log_placeholder(payload)
+    return payload
+
+
+def send_payout_failed(payout) -> dict[str, int | str]:
+    payload = _build_payout_payload(event="payout_failed", payout=payout)
     _log_placeholder(payload)
     return payload

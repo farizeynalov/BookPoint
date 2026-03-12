@@ -22,6 +22,11 @@ celery_app.conf.update(
             "schedule": float(settings.payment_expiration_check_interval_seconds),
             "kwargs": {"expiration_minutes": settings.payment_pending_expiration_minutes},
         },
+        "bookpoint-process-pending-payouts": {
+            "task": "bookpoint.payouts.process_pending",
+            "schedule": float(settings.payout_processing_interval_seconds),
+            "kwargs": {"provider_name": "mock"},
+        },
     },
     task_serializer="json",
     result_serializer="json",

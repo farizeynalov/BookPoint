@@ -42,6 +42,7 @@ from app.schemas.payment import (
     PaymentConfirmResponse,
     RefundRead,
 )
+from app.schemas.payout import PayoutRead, ProviderEarningRead
 from app.schemas.provider import ProviderCreate, ProviderRead, ProviderUpdate
 from app.schemas.provider_availability import (
     ProviderAvailabilityCreate,
@@ -108,6 +109,8 @@ __all__ = [
     "PaymentCheckoutSession",
     "PaymentConfirmRequest",
     "PaymentConfirmResponse",
+    "PayoutRead",
+    "ProviderEarningRead",
     "RefundRead",
     "ProviderAvailabilityCreate",
     "ProviderAvailabilityRead",

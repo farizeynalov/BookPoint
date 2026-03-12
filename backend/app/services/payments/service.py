@@ -12,10 +12,12 @@ from app.repositories.refund_repository import RefundRepository
 from app.services.notifications.dispatcher import (
     enqueue_appointment_cancelled_notification,
     enqueue_booking_auto_canceled_payment_timeout_notification,
+    enqueue_earning_created_notification,
     enqueue_payment_failed_notification,
     enqueue_payment_required_notification,
     enqueue_payment_succeeded_notification,
 )
+from app.services.payments.earning_service import EarningService
 from app.services.payments.mock_provider import MockCheckoutProvider
 from app.utils.payment import decimal_to_minor, validate_service_payment_policy
 
@@ -26,6 +28,7 @@ class PaymentService:
         self.payment_repo = PaymentRepository(db)
         self.refund_repo = RefundRepository(db)
         self.appointment_repo = AppointmentRepository(db)
+        self.earning_service = EarningService(db)
         self._providers = {
             "mock": MockCheckoutProvider(),
         }
@@ -207,6 +210,7 @@ class PaymentService:
         previous_status = payment.status
         paid_at = datetime.now(timezone.utc) if status == PaymentStatus.SUCCEEDED else None
         appointment_was_auto_cancelled = False
+        earning_created = False
 
         try:
             payment = self.payment_repo.update(
@@ -226,6 +230,11 @@ class PaymentService:
                         auto_commit=False,
                         status=AppointmentStatus.CONFIRMED,
                     )
+                _, earning_created = self.earning_service.ensure_earning_for_payment(
+                    payment=payment,
+                    appointment=appointment,
+                    auto_commit=False,
+                )
             elif status in {PaymentStatus.FAILED, PaymentStatus.CANCELED}:
                 appointment_was_auto_cancelled = self._cancel_pending_payment_appointment(
                     appointment,
@@ -236,6 +245,8 @@ class PaymentService:
             self.db.rollback()
             raise
 
+        if earning_created:
+            enqueue_earning_created_notification(payment.appointment_id)
         if status != previous_status:
             if status == PaymentStatus.SUCCEEDED:
                 enqueue_payment_succeeded_notification(payment.appointment_id)

@@ -6,11 +6,16 @@ from app.db.session import SessionLocal
 from app.models.enums import AppointmentStatus, NotificationStatus, NotificationType
 from app.repositories.appointment_repository import AppointmentRepository
 from app.repositories.notification_repository import NotificationRepository
+from app.repositories.payout_repository import PayoutRepository
 from app.services.notifications.service import (
     send_booking_auto_canceled_payment_timeout,
     send_payment_failed,
     send_payment_required,
     send_payment_succeeded,
+    send_earning_created,
+    send_payout_completed,
+    send_payout_created,
+    send_payout_failed,
     send_refund_failed,
     send_refund_initiated,
     send_refund_succeeded,
@@ -19,6 +24,7 @@ from app.services.notifications.service import (
     send_booking_reminder,
     send_booking_reschedule,
 )
+from app.services.payments.payout_service import PayoutService
 from app.services.payments.service import PaymentService
 from app.workers.celery_app import celery_app
 
@@ -27,6 +33,7 @@ logger = logging.getLogger(__name__)
 REMINDER_TASK_NAME = "bookpoint.notifications.appointment_reminder"
 REMINDER_LOOKAHEAD_MINUTES = 60
 PAYMENT_EXPIRATION_TASK_NAME = "bookpoint.payments.expire_pending"
+PAYOUT_PROCESSING_TASK_NAME = "bookpoint.payouts.process_pending"
 
 
 @celery_app.task(name="bookpoint.ping")
@@ -75,6 +82,34 @@ def _execute_status_update_task(*, appointment_id: int, event_type: str, sender)
     except Exception:
         db.rollback()
         logger.exception("notification_task_failed event=%s appointment_id=%s", event_type, appointment_id)
+        raise
+    finally:
+        db.close()
+
+
+def _execute_payout_notification_task(*, payout_id: int, event_type: str, sender) -> dict[str, str | int]:
+    logger.info("notification_task_start event=%s payout_id=%s", event_type, payout_id)
+    db = SessionLocal()
+    try:
+        payout_repo = PayoutRepository(db)
+        payout = payout_repo.get(payout_id)
+        if payout is None:
+            logger.warning("notification_task_payout_missing event=%s payout_id=%s", event_type, payout_id)
+            return {
+                "event": event_type,
+                "payout_id": payout_id,
+                "status": "payout_not_found",
+            }
+
+        payload = sender(payout)
+        logger.info("notification_task_success event=%s payout_id=%s payload=%s", event_type, payout.id, payload)
+        return {
+            "event": event_type,
+            "payout_id": payout.id,
+            "status": "sent",
+        }
+    except Exception:
+        logger.exception("notification_task_failed event=%s payout_id=%s", event_type, payout_id)
         raise
     finally:
         db.close()
@@ -178,6 +213,42 @@ def notify_refund_failed(appointment_id: int) -> dict[str, str | int]:
     )
 
 
+@celery_app.task(name="bookpoint.notifications.earning_created")
+def notify_earning_created(appointment_id: int) -> dict[str, str | int]:
+    return _execute_status_update_task(
+        appointment_id=appointment_id,
+        event_type="earning_created",
+        sender=send_earning_created,
+    )
+
+
+@celery_app.task(name="bookpoint.notifications.payout_created")
+def notify_payout_created(payout_id: int) -> dict[str, str | int]:
+    return _execute_payout_notification_task(
+        payout_id=payout_id,
+        event_type="payout_created",
+        sender=send_payout_created,
+    )
+
+
+@celery_app.task(name="bookpoint.notifications.payout_completed")
+def notify_payout_completed(payout_id: int) -> dict[str, str | int]:
+    return _execute_payout_notification_task(
+        payout_id=payout_id,
+        event_type="payout_completed",
+        sender=send_payout_completed,
+    )
+
+
+@celery_app.task(name="bookpoint.notifications.payout_failed")
+def notify_payout_failed(payout_id: int) -> dict[str, str | int]:
+    return _execute_payout_notification_task(
+        payout_id=payout_id,
+        event_type="payout_failed",
+        sender=send_payout_failed,
+    )
+
+
 @celery_app.task(name=REMINDER_TASK_NAME)
 def notify_appointment_reminder(appointment_id: int) -> dict[str, str | int]:
     event_type = "appointment_reminder"
@@ -250,6 +321,21 @@ def expire_pending_payments(expiration_minutes: int | None = None) -> dict[str, 
     except Exception:
         db.rollback()
         logger.exception("payment_expiration_failed")
+        raise
+    finally:
+        db.close()
+
+
+@celery_app.task(name=PAYOUT_PROCESSING_TASK_NAME)
+def process_pending_payouts(provider_name: str = "mock") -> dict[str, int]:
+    db = SessionLocal()
+    try:
+        result = PayoutService(db).process_pending_payouts(provider_name=provider_name)
+        logger.info("payout_processing_complete %s", result)
+        return result
+    except Exception:
+        db.rollback()
+        logger.exception("payout_processing_failed")
         raise
     finally:
         db.close()

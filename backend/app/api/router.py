@@ -16,6 +16,7 @@ from app.api.routers import (
     provider_date_overrides,
     provider_time_off,
     providers,
+    payouts,
     scheduling,
     services,
 )
@@ -47,6 +48,7 @@ api_router.include_router(locations.service_locations_router, prefix="/services"
 api_router.include_router(customers.router, prefix="/customers", tags=["customers"])
 api_router.include_router(customer_identities.router, prefix="/customer-identities", tags=["customer-identities"])
 api_router.include_router(payments.router, prefix="/payments", tags=["payments"])
+api_router.include_router(payouts.router, prefix="/payouts", tags=["payouts"])
 api_router.include_router(provider_availability.router, prefix="/provider-availability", tags=["provider-availability"])
 api_router.include_router(provider_time_off.router, prefix="/provider-time-off", tags=["provider-time-off"])
 api_router.include_router(provider_date_overrides.router, prefix="/provider-date-overrides", tags=["provider-date-overrides"])

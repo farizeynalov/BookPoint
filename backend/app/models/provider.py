@@ -33,3 +33,5 @@ class Provider(Base, TimestampMixin):
     provider_services = relationship("ProviderService", back_populates="provider", cascade="all, delete-orphan")
     provider_locations = relationship("ProviderLocation", back_populates="provider", cascade="all, delete-orphan")
     appointments = relationship("Appointment", back_populates="provider")
+    earnings = relationship("ProviderEarning", back_populates="provider", cascade="all, delete-orphan")
+    payouts = relationship("Payout", back_populates="provider", cascade="all, delete-orphan")

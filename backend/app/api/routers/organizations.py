@@ -15,6 +15,7 @@ from app.repositories.organization_member_repository import OrganizationMemberRe
 from app.repositories.organization_location_repository import OrganizationLocationRepository
 from app.repositories.organization_repository import OrganizationRepository
 from app.schemas.organization import OrganizationCreate, OrganizationRead, OrganizationUpdate
+from app.utils.commission import validate_organization_commission_config
 
 router = APIRouter()
 
@@ -90,7 +91,19 @@ def update_organization(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
 
     require_org_admin_membership(db, organization_id=organization_id, user=current_user)
-    updated = org_repo.update(organization, **payload.model_dump(exclude_unset=True))
+    updates = payload.model_dump(exclude_unset=True)
+    merged_commission_type = updates.get("commission_type", organization.commission_type)
+    merged_commission_percentage = updates.get("commission_percentage", organization.commission_percentage)
+    merged_commission_fixed_minor = updates.get("commission_fixed_minor", organization.commission_fixed_minor)
+    try:
+        validate_organization_commission_config(
+            commission_type=merged_commission_type,
+            commission_percentage=merged_commission_percentage,
+            commission_fixed_minor=merged_commission_fixed_minor,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    updated = org_repo.update(organization, **updates)
     return OrganizationRead.model_validate(updated)
 
 

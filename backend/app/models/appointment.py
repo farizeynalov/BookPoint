@@ -62,4 +62,5 @@ class Appointment(Base, TimestampMixin):
     service = relationship("Service", back_populates="appointments")
     customer = relationship("Customer", back_populates="appointments")
     payments = relationship("Payment", back_populates="appointment", cascade="all, delete-orphan")
+    earnings = relationship("ProviderEarning", back_populates="appointment", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="appointment", cascade="all, delete-orphan")

@@ -9,9 +9,11 @@ from app.models.organization_location import OrganizationLocation
 from app.models.organization_member import OrganizationMember
 from app.models.organization_membership import OrganizationMembership
 from app.models.payment import Payment
+from app.models.payout import Payout
 from app.models.provider import Provider
 from app.models.provider_availability import ProviderAvailability
 from app.models.provider_date_override import ProviderDateOverride
+from app.models.provider_earning import ProviderEarning
 from app.models.provider_location import ProviderLocation
 from app.models.provider_service import ProviderService
 from app.models.provider_time_off import ProviderTimeOff
@@ -32,9 +34,11 @@ __all__ = [
     "OrganizationMember",
     "OrganizationMembership",
     "Payment",
+    "Payout",
     "Provider",
     "ProviderAvailability",
     "ProviderDateOverride",
+    "ProviderEarning",
     "ProviderLocation",
     "ProviderService",
     "ProviderTimeOff",

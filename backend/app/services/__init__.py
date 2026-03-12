@@ -2,6 +2,8 @@ from app.services.appointment_service import AppointmentService
 from app.services.auth_service import AuthService
 from app.services.customer_self_service_booking_service import CustomerSelfServiceBookingService
 from app.services.discovery_service import DiscoveryService
+from app.services.payments.earning_service import EarningService
+from app.services.payments.payout_service import PayoutService
 from app.services.payments.refund_service import RefundService
 from app.services.payments.service import PaymentService
 from app.services.provider_availability_service import ProviderAvailabilityService
@@ -14,6 +16,8 @@ __all__ = [
     "AuthService",
     "CustomerSelfServiceBookingService",
     "DiscoveryService",
+    "EarningService",
+    "PayoutService",
     "RefundService",
     "PaymentService",
     "ProviderAvailabilityService",

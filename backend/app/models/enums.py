@@ -47,6 +47,11 @@ class PaymentType(str, Enum):
     DEPOSIT = "deposit"
 
 
+class CommissionType(str, Enum):
+    PERCENTAGE = "percentage"
+    FIXED = "fixed"
+
+
 class CancellationPolicyType(str, Enum):
     FLEXIBLE = "flexible"
     MODERATE = "moderate"
@@ -56,6 +61,19 @@ class CancellationPolicyType(str, Enum):
 class RefundStatus(str, Enum):
     PENDING = "pending"
     SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class ProviderEarningStatus(str, Enum):
+    PENDING = "pending"
+    READY_FOR_PAYOUT = "ready_for_payout"
+    PAID_OUT = "paid_out"
+
+
+class PayoutStatus(str, Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
     FAILED = "failed"
 
 
