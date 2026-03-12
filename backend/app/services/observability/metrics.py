@@ -19,6 +19,8 @@ DEFAULT_COUNTERS = (
     "reminders_scheduled_total",
     "worker_runs_total",
     "worker_failures_total",
+    "rate_limit_hits_total",
+    "rate_limit_allowed_total",
 )
 
 

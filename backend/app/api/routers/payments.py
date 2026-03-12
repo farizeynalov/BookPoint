@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.session import get_db
+from app.dependencies.rate_limit import build_identity_key, enforce_rate_limit, get_client_ip
 from app.dependencies.auth import get_current_active_user, require_org_membership
 from app.models.enums import MembershipRole
 from app.models.user import User
@@ -32,6 +33,7 @@ def _require_webhook_secret(
 @router.post("/confirm", response_model=PaymentConfirmResponse)
 def confirm_payment_status(
     payload: PaymentConfirmRequest,
+    request: Request,
     idempotency_key: str | None = Header(default=None, alias=IDEMPOTENCY_HEADER),
     _: None = Depends(_require_webhook_secret),
     db: Session = Depends(get_db),
@@ -49,6 +51,16 @@ def confirm_payment_status(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     if start_result.replay_response is not None:
         return start_result.replay_response
+
+    identifier = payload.provider_checkout_session_id or payload.provider_payment_intent_id or "unknown"
+    ip = get_client_ip(request)
+    enforce_rate_limit(
+        request=request,
+        db=db,
+        policy_name="payment_confirm",
+        identity_key=build_identity_key([f"ip:{ip}", f"identifier:{identifier}"]),
+        actor_type="webhook",
+    )
 
     payment_service = PaymentService(db)
     try:
@@ -90,6 +102,7 @@ def confirm_payment_status(
 def create_manual_refund(
     payment_id: int,
     payload: ManualRefundCreate,
+    request: Request,
     idempotency_key: str | None = Header(default=None, alias=IDEMPOTENCY_HEADER),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
@@ -110,6 +123,15 @@ def create_manual_refund(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     if start_result.replay_response is not None:
         return start_result.replay_response
+
+    enforce_rate_limit(
+        request=request,
+        db=db,
+        policy_name="manual_refund",
+        identity_key=build_identity_key([f"user:{current_user.id}", f"payment:{payment_id}"]),
+        actor_type="user",
+        actor_id=current_user.id,
+    )
 
     try:
         payment = PaymentRepository(db).get(payment_id)

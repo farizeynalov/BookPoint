@@ -1,10 +1,11 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.dependencies.rate_limit import build_identity_key, enforce_rate_limit
 from app.dependencies.auth import get_current_active_user, require_org_membership, require_platform_admin
 from app.models.enums import MembershipRole
 from app.models.user import User
@@ -52,6 +53,7 @@ def _require_event_visibility_access(
 
 @router.get("/events", response_model=list[DomainEventRead])
 def list_domain_events(
+    request: Request,
     event_type: str | None = Query(default=None),
     organization_id: int | None = Query(default=None),
     entity_type: str | None = Query(default=None),
@@ -63,6 +65,14 @@ def list_domain_events(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> list[DomainEventRead]:
+    enforce_rate_limit(
+        request=request,
+        db=db,
+        policy_name="admin_events",
+        identity_key=build_identity_key([f"user:{current_user.id}"]),
+        actor_type="user",
+        actor_id=current_user.id,
+    )
     _require_event_visibility_access(db=db, user=current_user, organization_id=organization_id)
     events = DomainEventRepository(db).list_events(
         event_type=event_type,

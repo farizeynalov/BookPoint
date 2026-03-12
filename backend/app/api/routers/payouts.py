@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi import Header
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.dependencies.rate_limit import build_identity_key, enforce_rate_limit
 from app.dependencies.auth import get_current_active_user, require_org_membership
 from app.models.enums import MembershipRole
 from app.models.user import User
@@ -24,6 +25,7 @@ router = APIRouter()
 @router.post("/{provider_id}/create", response_model=PayoutRead, status_code=status.HTTP_201_CREATED)
 def create_provider_payout(
     provider_id: int,
+    request: Request,
     idempotency_key: str | None = Header(default=None, alias=IDEMPOTENCY_HEADER),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
@@ -41,6 +43,15 @@ def create_provider_payout(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     if start_result.replay_response is not None:
         return start_result.replay_response
+
+    enforce_rate_limit(
+        request=request,
+        db=db,
+        policy_name="payout_create",
+        identity_key=build_identity_key([f"user:{current_user.id}", f"provider:{provider_id}"]),
+        actor_type="user",
+        actor_id=current_user.id,
+    )
 
     try:
         provider = ProviderRepository(db).get(provider_id)

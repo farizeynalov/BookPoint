@@ -19,6 +19,7 @@ _DEFAULT_ERROR_CODES = {
     status.HTTP_403_FORBIDDEN: "forbidden",
     status.HTTP_404_NOT_FOUND: "resource_not_found",
     status.HTTP_409_CONFLICT: "conflict",
+    status.HTTP_429_TOO_MANY_REQUESTS: "rate_limited",
     status.HTTP_422_UNPROCESSABLE_CONTENT: "validation_error",
     status.HTTP_500_INTERNAL_SERVER_ERROR: "internal_server_error",
 }
@@ -47,6 +48,17 @@ def _normalize_code(status_code: int, detail: Any) -> str:
         if isinstance(detail_code, str) and detail_code.strip():
             return detail_code.strip()
     return _DEFAULT_ERROR_CODES.get(status_code, "request_failed")
+
+
+def _normalize_details(detail: Any) -> dict[str, Any] | None:
+    if not isinstance(detail, Mapping):
+        return None
+    if isinstance(detail.get("details"), Mapping):
+        return dict(detail["details"])
+    filtered = {k: v for k, v in detail.items() if k not in {"code", "message"}}
+    if not filtered:
+        return None
+    return filtered
 
 
 def build_error_response(
@@ -82,7 +94,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         status_code=exc.status_code,
         code=_normalize_code(exc.status_code, exc.detail),
         message=_normalize_message(exc.detail, fallback="Request failed."),
-        details=exc.detail if isinstance(exc.detail, dict) else None,
+        details=_normalize_details(exc.detail),
         headers=exc.headers,
     )
 

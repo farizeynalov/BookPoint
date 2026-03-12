@@ -1,11 +1,17 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.dependencies.rate_limit import (
+    build_identity_key,
+    enforce_rate_limit,
+    get_client_ip,
+    hash_key_part,
+)
 from app.schemas.discovery import (
     DiscoveryBookingConfirmation,
     DiscoveryBookingCreate,
@@ -104,11 +110,29 @@ def list_discovery_providers_for_service_at_location(
 @router.get("/providers/{provider_id}/slots", response_model=list[DiscoverySlotRead])
 def list_discovery_slots(
     provider_id: int,
+    request: Request,
     service_id: int = Query(...),
     location_id: int = Query(...),
     date_value: date = Query(..., alias="date"),
     db: Session = Depends(get_db),
 ) -> list[DiscoverySlotRead]:
+    ip = get_client_ip(request)
+    enforce_rate_limit(
+        request=request,
+        db=db,
+        policy_name="public_slots",
+        identity_key=build_identity_key(
+            [
+                f"ip:{ip}",
+                f"provider:{provider_id}",
+                f"service:{service_id}",
+                f"location:{location_id}",
+            ]
+        ),
+        entity_type="provider",
+        entity_id=provider_id,
+        actor_type="customer",
+    )
     discovery_service = DiscoveryService(db)
     try:
         slots = discovery_service.list_visible_slots(
@@ -125,6 +149,7 @@ def list_discovery_slots(
 @router.post("/bookings", response_model=DiscoveryBookingConfirmation, status_code=status.HTTP_201_CREATED)
 def create_discovery_booking(
     payload: DiscoveryBookingCreate,
+    request: Request,
     idempotency_key: str | None = Header(default=None, alias=IDEMPOTENCY_HEADER),
     db: Session = Depends(get_db),
 ) -> DiscoveryBookingConfirmation | JSONResponse:
@@ -141,6 +166,29 @@ def create_discovery_booking(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     if start_result.replay_response is not None:
         return start_result.replay_response
+
+    ip = get_client_ip(request)
+    enforce_rate_limit(
+        request=request,
+        db=db,
+        policy_name="public_booking",
+        identity_key=build_identity_key([f"ip:{ip}"]),
+        actor_type="customer",
+    )
+    # Duplicate-abuse guard targets rapid re-submission of the same booking intent.
+    booking_signature = (
+        f"{payload.organization_id}:{payload.location_id}:{payload.provider_id}:"
+        f"{payload.service_id}:{payload.scheduled_start.isoformat()}:"
+        f"{payload.customer_phone}:{(payload.customer_email or '').strip().lower()}"
+    )
+    enforce_rate_limit(
+        request=request,
+        db=db,
+        policy_name="public_booking_duplicate",
+        identity_key=build_identity_key([f"ip:{ip}", f"sig:{hash_key_part(booking_signature)}"]),
+        message="Duplicate booking attempt detected. Please retry shortly.",
+        actor_type="customer",
+    )
 
     discovery_service = DiscoveryService(db)
     try:

@@ -12,6 +12,7 @@ from app.db.session import get_db
 from app.main import app
 from app.models.user import User
 from app.services.observability.metrics import reset_metrics_for_tests
+from app.services.rate_limiter import rate_limiter
 
 SQLALCHEMY_DATABASE_URL = "sqlite+pysqlite:///:memory:"
 
@@ -91,3 +92,8 @@ def stub_celery_send_task(monkeypatch):
 @pytest.fixture(scope="function", autouse=True)
 def reset_observability_metrics():
     reset_metrics_for_tests()
+
+
+@pytest.fixture(scope="function", autouse=True)
+def reset_rate_limiter_state():
+    rate_limiter.reset_for_tests()
