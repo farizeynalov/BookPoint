@@ -34,6 +34,12 @@ from app.schemas.organization_member import (
     OrganizationMembershipRead,
     OrganizationMembershipUpdate,
 )
+from app.schemas.payment import (
+    BookingPaymentSummary,
+    PaymentCheckoutSession,
+    PaymentConfirmRequest,
+    PaymentConfirmResponse,
+)
 from app.schemas.provider import ProviderCreate, ProviderRead, ProviderUpdate
 from app.schemas.provider_availability import (
     ProviderAvailabilityCreate,
@@ -95,6 +101,10 @@ __all__ = [
     "OrganizationMembershipUpdate",
     "OrganizationRead",
     "OrganizationUpdate",
+    "BookingPaymentSummary",
+    "PaymentCheckoutSession",
+    "PaymentConfirmRequest",
+    "PaymentConfirmResponse",
     "ProviderAvailabilityCreate",
     "ProviderAvailabilityRead",
     "ProviderAvailabilityUpdate",

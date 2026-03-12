@@ -5,6 +5,7 @@ from app.repositories.notification_repository import NotificationRepository
 from app.repositories.organization_location_repository import OrganizationLocationRepository
 from app.repositories.organization_member_repository import OrganizationMemberRepository
 from app.repositories.organization_repository import OrganizationRepository
+from app.repositories.payment_repository import PaymentRepository
 from app.repositories.provider_availability_repository import ProviderAvailabilityRepository
 from app.repositories.provider_date_override_repository import ProviderDateOverrideRepository
 from app.repositories.provider_location_repository import ProviderLocationRepository
@@ -23,6 +24,7 @@ __all__ = [
     "OrganizationLocationRepository",
     "OrganizationMemberRepository",
     "OrganizationRepository",
+    "PaymentRepository",
     "ProviderAvailabilityRepository",
     "ProviderDateOverrideRepository",
     "ProviderLocationRepository",

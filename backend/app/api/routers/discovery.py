@@ -122,7 +122,7 @@ def create_discovery_booking(
 ) -> DiscoveryBookingConfirmation:
     discovery_service = DiscoveryService(db)
     try:
-        appointment, customer = discovery_service.create_public_booking(payload)
+        appointment, customer, payment_summary = discovery_service.create_public_booking(payload)
     except Exception as exc:
         _raise_discovery_error(exc)
 
@@ -143,5 +143,6 @@ def create_discovery_booking(
             "scheduled_start": appointment.start_datetime,
             "scheduled_end": appointment.end_datetime,
             "status": appointment.status,
+            "payment": payment_summary,
         }
     )

@@ -8,6 +8,7 @@ from app.models.organization import Organization
 from app.models.organization_location import OrganizationLocation
 from app.models.organization_member import OrganizationMember
 from app.models.organization_membership import OrganizationMembership
+from app.models.payment import Payment
 from app.models.provider import Provider
 from app.models.provider_availability import ProviderAvailability
 from app.models.provider_date_override import ProviderDateOverride
@@ -29,6 +30,7 @@ __all__ = [
     "OrganizationLocation",
     "OrganizationMember",
     "OrganizationMembership",
+    "Payment",
     "Provider",
     "ProviderAvailability",
     "ProviderDateOverride",

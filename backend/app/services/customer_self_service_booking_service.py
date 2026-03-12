@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.enums import AppointmentStatus
 from app.repositories.appointment_repository import AppointmentRepository
 from app.services.appointment_service import AppointmentService
+from app.services.payments.service import PaymentService
 from app.utils.datetime import ensure_aware_utc
 
 
@@ -14,9 +15,9 @@ class CustomerSelfServiceBookingService:
         self.db = db
         self.appointment_repo = AppointmentRepository(db)
         self.appointment_service = AppointmentService(db)
+        self.payment_service = PaymentService(db)
 
-    @staticmethod
-    def _build_summary(appointment) -> dict:
+    def _build_summary(self, appointment) -> dict:
         return {
             "appointment_id": appointment.id,
             "booking_reference": appointment.booking_reference,
@@ -27,6 +28,7 @@ class CustomerSelfServiceBookingService:
             "location_name": appointment.location.name,
             "provider_name": appointment.provider.display_name,
             "service_name": appointment.service.name if appointment.service is not None else None,
+            "payment": self.payment_service.get_customer_payment_summary(appointment),
         }
 
     def _get_booking_or_404(self, booking_id: int, access_token: str):

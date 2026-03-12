@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    payment_webhook_secret: str | None = None
 
     database_url: str = "postgresql+psycopg://bookpoint:bookpoint@db:5432/bookpoint"
     redis_url: str = "redis://redis:6379/0"

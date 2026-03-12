@@ -2,6 +2,7 @@ from datetime import datetime
 
 from app.models.enums import AppointmentStatus
 from app.schemas.common import ORMModel
+from app.schemas.payment import BookingPaymentSummary
 
 
 class CustomerBookingSummary(ORMModel):
@@ -14,6 +15,7 @@ class CustomerBookingSummary(ORMModel):
     location_name: str
     provider_name: str
     service_name: str | None = None
+    payment: BookingPaymentSummary | None = None
 
 
 class CustomerBookingCancelResponse(CustomerBookingSummary):

@@ -23,6 +23,7 @@ from app.repositories.service_repository import ServiceRepository
 from app.schemas.appointment import AppointmentCreate
 from app.schemas.discovery import DiscoveryBookingCreate
 from app.services.appointment_service import AppointmentService
+from app.services.payments.service import PaymentService
 from app.services.scheduling_service import SchedulingService
 from app.utils.datetime import ensure_aware_utc
 from app.utils.phone import normalize_phone_number
@@ -41,6 +42,7 @@ class DiscoveryService:
         self.customer_repo = CustomerRepository(db)
         self.scheduling_service = SchedulingService(db)
         self.appointment_service = AppointmentService(db)
+        self.payment_service = PaymentService(db)
 
     @staticmethod
     def _normalize_email(value: str | None) -> str | None:
@@ -183,7 +185,7 @@ class DiscoveryService:
         now_utc = datetime.now(timezone.utc)
         return [slot for slot in slots if slot.start_datetime > now_utc]
 
-    def _validate_booking_entities(self, payload: DiscoveryBookingCreate) -> None:
+    def _validate_booking_entities(self, payload: DiscoveryBookingCreate) -> Service:
         organization = self.organization_repo.get(payload.organization_id)
         if organization is None or not organization.is_active:
             raise LookupError("Organization not found")
@@ -216,6 +218,7 @@ class DiscoveryService:
         service_location = self.service_location_repo.get_by_service_and_location(service.id, location.id)
         if service_location is None:
             raise ValueError("Service is not available at the selected location.")
+        return service
 
     def _candidate_customers_for_contact(self, *, phone_number_normalized: str, email: str | None):
         candidates = []
@@ -282,7 +285,7 @@ class DiscoveryService:
             raise
 
     def create_public_booking(self, payload: DiscoveryBookingCreate):
-        self._validate_booking_entities(payload)
+        service = self._validate_booking_entities(payload)
         scheduled_start_utc = ensure_aware_utc(payload.scheduled_start)
         if scheduled_start_utc <= datetime.now(timezone.utc):
             raise ValueError("Scheduled time must be in the future.")
@@ -303,9 +306,12 @@ class DiscoveryService:
                 service_id=payload.service_id,
                 customer_id=customer.id,
                 start_datetime=scheduled_start_utc,
-                status=AppointmentStatus.CONFIRMED,
+                status=AppointmentStatus.PENDING if service.requires_payment else AppointmentStatus.CONFIRMED,
                 booking_channel=BookingChannel.WEB,
                 notes=None,
             )
         )
-        return appointment, customer
+        if service.requires_payment:
+            self.payment_service.create_checkout_session_for_appointment(appointment, provider_name="mock")
+        payment_summary = self.payment_service.get_customer_payment_summary(appointment)
+        return appointment, customer, payment_summary

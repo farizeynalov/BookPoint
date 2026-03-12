@@ -57,3 +57,15 @@ def send_booking_reminder(appointment: Appointment) -> dict[str, int | str]:
     payload = _build_payload(event="appointment_reminder", appointment=appointment)
     _log_placeholder(payload)
     return payload
+
+
+def send_payment_succeeded(appointment: Appointment) -> dict[str, int | str]:
+    payload = _build_payload(event="payment_succeeded", appointment=appointment)
+    _log_placeholder(payload)
+    return payload
+
+
+def send_payment_failed(appointment: Appointment) -> dict[str, int | str]:
+    payload = _build_payload(event="payment_failed", appointment=appointment)
+    _log_placeholder(payload)
+    return payload

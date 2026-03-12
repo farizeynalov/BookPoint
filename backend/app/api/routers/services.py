@@ -21,6 +21,7 @@ from app.schemas.provider_service import (
     ProviderServiceAssignCreate,
 )
 from app.schemas.service import ProviderServiceCreate, ServiceCreate, ServiceRead, ServiceUpdate
+from app.utils.payment import validate_service_payment_policy
 
 router = APIRouter()
 provider_services_router = APIRouter()
@@ -252,6 +253,21 @@ def update_service(
         provider = provider_repo.get(provider_id)
         if provider is None or provider.organization_id != service.organization_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid provider assignment")
+    merged_requires_payment = updates.get("requires_payment", service.requires_payment)
+    merged_payment_type = updates.get("payment_type", service.payment_type)
+    merged_price = updates.get("price", service.price)
+    merged_currency = updates.get("currency", service.currency)
+    merged_deposit_amount_minor = updates.get("deposit_amount_minor", service.deposit_amount_minor)
+    try:
+        validate_service_payment_policy(
+            requires_payment=merged_requires_payment,
+            payment_type=merged_payment_type,
+            price=merged_price,
+            currency=merged_currency,
+            deposit_amount_minor=merged_deposit_amount_minor,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     try:
         updated = service_repo.update(service, **updates)
         if "provider_id" in updates:

@@ -32,6 +32,20 @@ class AppointmentStatus(str, Enum):
     NO_SHOW = "no_show"
 
 
+class PaymentStatus(str, Enum):
+    PENDING = "pending"
+    REQUIRES_ACTION = "requires_action"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELED = "canceled"
+    REFUNDED = "refunded"
+
+
+class PaymentType(str, Enum):
+    FULL = "full"
+    DEPOSIT = "deposit"
+
+
 class MessageDirection(str, Enum):
     INBOUND = "inbound"
     OUTBOUND = "outbound"

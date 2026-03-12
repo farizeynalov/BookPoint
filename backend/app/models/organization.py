@@ -22,3 +22,4 @@ class Organization(Base, TimestampMixin):
     providers = relationship("Provider", back_populates="organization", cascade="all, delete-orphan")
     services = relationship("Service", back_populates="organization", cascade="all, delete-orphan")
     appointments = relationship("Appointment", back_populates="organization", cascade="all, delete-orphan")
+    payments = relationship("Payment", back_populates="organization", cascade="all, delete-orphan")

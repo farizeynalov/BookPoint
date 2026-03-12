@@ -3,8 +3,9 @@ from decimal import Decimal
 
 from pydantic import Field
 
-from app.models.enums import AppointmentStatus
+from app.models.enums import AppointmentStatus, PaymentType
 from app.schemas.common import ORMModel
+from app.schemas.payment import BookingPaymentSummary
 
 
 class DiscoveryOrganizationRead(ORMModel):
@@ -38,6 +39,9 @@ class DiscoveryServiceRead(ORMModel):
     duration_minutes: int
     price: Decimal | None = None
     currency: str | None = None
+    requires_payment: bool
+    payment_type: PaymentType
+    deposit_amount_minor: int | None = None
 
 
 class DiscoveryProviderRead(ORMModel):
@@ -81,6 +85,7 @@ class DiscoveryBookingConfirmation(ORMModel):
     scheduled_start: datetime
     scheduled_end: datetime
     status: AppointmentStatus
+    payment: BookingPaymentSummary | None = None
 
 
 class DiscoverySlotsQuery(ORMModel):

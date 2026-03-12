@@ -6,6 +6,8 @@ from app.models.enums import AppointmentStatus, NotificationStatus, Notification
 from app.repositories.appointment_repository import AppointmentRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.services.notifications.service import (
+    send_payment_failed,
+    send_payment_succeeded,
     send_booking_cancellation,
     send_booking_confirmation,
     send_booking_reminder,
@@ -102,6 +104,24 @@ def notify_appointment_rescheduled(appointment_id: int) -> dict[str, str | int]:
         appointment_id=appointment_id,
         event_type="appointment_rescheduled",
         sender=send_booking_reschedule,
+    )
+
+
+@celery_app.task(name="bookpoint.notifications.payment_succeeded")
+def notify_payment_succeeded(appointment_id: int) -> dict[str, str | int]:
+    return _execute_status_update_task(
+        appointment_id=appointment_id,
+        event_type="payment_succeeded",
+        sender=send_payment_succeeded,
+    )
+
+
+@celery_app.task(name="bookpoint.notifications.payment_failed")
+def notify_payment_failed(appointment_id: int) -> dict[str, str | int]:
+    return _execute_status_update_task(
+        appointment_id=appointment_id,
+        event_type="payment_failed",
+        sender=send_payment_failed,
     )
 
 
