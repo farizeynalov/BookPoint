@@ -20,6 +20,8 @@ from app.services.notifications.dispatcher import (
     enqueue_appointment_created_notification,
     enqueue_appointment_rescheduled_notification,
 )
+from app.services.observability.domain_events import record_domain_event
+from app.services.observability.metrics import increment_counter
 from app.services.payments.refund_service import RefundService
 from app.services.scheduling_service import SchedulingService
 from app.utils.datetime import ensure_aware_utc
@@ -85,7 +87,13 @@ class AppointmentService:
                 return
         raise ValueError("Requested time does not fit provider availability.")
 
-    def create_appointment(self, payload: AppointmentCreate):
+    def create_appointment(
+        self,
+        payload: AppointmentCreate,
+        *,
+        actor_type: str = "system",
+        actor_id: int | None = None,
+    ):
         start_datetime = ensure_aware_utc(payload.start_datetime)
         try:
             provider = self.provider_repo.get_for_update(payload.provider_id)
@@ -170,6 +178,25 @@ class AppointmentService:
             )
             self.db.commit()
             enqueue_appointment_created_notification(appointment.id)
+            increment_counter("bookings_created_total")
+            record_domain_event(
+                self.db,
+                event_type="booking_created",
+                entity_type="appointment",
+                entity_id=appointment.id,
+                organization_id=appointment.organization_id,
+                actor_type=actor_type,
+                actor_id=actor_id,
+                related_appointment_id=appointment.id,
+                status="success",
+                payload={
+                    "provider_id": appointment.provider_id,
+                    "customer_id": appointment.customer_id,
+                    "service_id": appointment.service_id,
+                    "location_id": appointment.location_id,
+                    "booking_channel": appointment.booking_channel.value,
+                },
+            )
             return appointment
         except IntegrityError as exc:
             self.db.rollback()
@@ -180,7 +207,14 @@ class AppointmentService:
             self.db.rollback()
             raise
 
-    def cancel_appointment(self, appointment_id: int, notes: str | None = None):
+    def cancel_appointment(
+        self,
+        appointment_id: int,
+        notes: str | None = None,
+        *,
+        actor_type: str = "system",
+        actor_id: int | None = None,
+    ):
         try:
             appointment = self.appointment_repo.get_for_update(appointment_id)
             if appointment is None:
@@ -203,6 +237,24 @@ class AppointmentService:
             )
             self.db.commit()
             enqueue_appointment_cancelled_notification(updated.id)
+            increment_counter("bookings_canceled_total")
+            record_domain_event(
+                self.db,
+                event_type="booking_canceled",
+                entity_type="appointment",
+                entity_id=updated.id,
+                organization_id=updated.organization_id,
+                actor_type=actor_type,
+                actor_id=actor_id,
+                related_appointment_id=updated.id,
+                status="success",
+                payload={
+                    "provider_id": updated.provider_id,
+                    "customer_id": updated.customer_id,
+                    "service_id": updated.service_id,
+                    "notes": bool(updated.notes),
+                },
+            )
             try:
                 RefundService(self.db).process_refund_for_cancellation(updated)
             except Exception:
@@ -213,7 +265,14 @@ class AppointmentService:
             self.db.rollback()
             raise
 
-    def reschedule_appointment(self, appointment_id: int, new_start_datetime):
+    def reschedule_appointment(
+        self,
+        appointment_id: int,
+        new_start_datetime,
+        *,
+        actor_type: str = "system",
+        actor_id: int | None = None,
+    ):
         start_datetime = ensure_aware_utc(new_start_datetime)
         try:
             appointment = self.appointment_repo.get_for_update(appointment_id)
@@ -264,6 +323,25 @@ class AppointmentService:
             )
             self.db.commit()
             enqueue_appointment_rescheduled_notification(updated.id)
+            increment_counter("bookings_rescheduled_total")
+            record_domain_event(
+                self.db,
+                event_type="booking_rescheduled",
+                entity_type="appointment",
+                entity_id=updated.id,
+                organization_id=updated.organization_id,
+                actor_type=actor_type,
+                actor_id=actor_id,
+                related_appointment_id=updated.id,
+                status="success",
+                payload={
+                    "provider_id": updated.provider_id,
+                    "customer_id": updated.customer_id,
+                    "service_id": updated.service_id,
+                    "new_start_datetime": updated.start_datetime.isoformat(),
+                    "new_end_datetime": updated.end_datetime.isoformat(),
+                },
+            )
             return updated
         except IntegrityError as exc:
             self.db.rollback()

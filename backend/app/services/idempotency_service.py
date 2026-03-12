@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.models.idempotency_key import IdempotencyKey
 from app.repositories.idempotency_repository import IdempotencyRepository
+from app.services.observability.domain_events import record_domain_event
+from app.services.observability.metrics import increment_counter
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +63,21 @@ class IdempotencyService:
             raise IdempotencyConflictError("Idempotency key was already used with a different request.")
         if existing.response_status_code is None or existing.response_body_json is None:
             raise IdempotencyConflictError("Idempotency key is already being processed.")
+        increment_counter("idempotency_replays_total")
+        record_domain_event(
+            self.db,
+            event_type="idempotency_replayed",
+            entity_type=existing.resource_type or "idempotency_key",
+            entity_id=existing.resource_id or existing.id,
+            actor_type="system",
+            status="info",
+            payload={
+                "scope": existing.scope,
+                "idempotency_key": existing.idempotency_key,
+                "resource_type": existing.resource_type,
+                "resource_id": existing.resource_id,
+            },
+        )
         logger.info(
             "idempotency_replay scope=%s key=%s record_id=%s",
             existing.scope,

@@ -128,7 +128,12 @@ def create_manual_refund(
         if amount_minor is None:
             amount_minor = refund_service.get_refundable_remaining_minor(payment)
         try:
-            refund = refund_service.create_refund(payment, amount_minor)
+            refund = refund_service.create_refund(
+                payment,
+                amount_minor,
+                actor_type="user",
+                actor_id=current_user.id,
+            )
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
         if refund is None:

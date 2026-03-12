@@ -18,6 +18,8 @@ from app.services.notifications.dispatcher import (
     enqueue_payment_required_notification,
     enqueue_payment_succeeded_notification,
 )
+from app.services.observability.domain_events import record_domain_event
+from app.services.observability.metrics import increment_counter
 from app.services.payments.earning_service import EarningService
 from app.services.payments.mock_provider import MockCheckoutProvider
 from app.utils.payment import decimal_to_minor, validate_service_payment_policy
@@ -159,6 +161,24 @@ class PaymentService:
             )
             self.db.commit()
             enqueue_payment_required_notification(appointment.id)
+            increment_counter("payments_required_total")
+            record_domain_event(
+                self.db,
+                event_type="payment_required",
+                entity_type="payment",
+                entity_id=payment.id,
+                organization_id=payment.organization_id,
+                actor_type="system",
+                related_payment_id=payment.id,
+                related_appointment_id=appointment.id,
+                status="success",
+                payload={
+                    "provider_name": payment.provider_name,
+                    "amount_minor": payment.amount_minor,
+                    "currency": payment.currency,
+                    "checkout_session_id": payment.provider_checkout_session_id,
+                },
+            )
             logger.info(
                 "domain_event=payment_checkout_created payment_id=%s appointment_id=%s provider=%s",
                 payment.id,
@@ -287,11 +307,58 @@ class PaymentService:
 
         if earning_created:
             enqueue_earning_created_notification(payment.appointment_id)
+            record_domain_event(
+                self.db,
+                event_type="earning_created",
+                entity_type="payment",
+                entity_id=payment.id,
+                organization_id=payment.organization_id,
+                actor_type="system",
+                related_payment_id=payment.id,
+                related_appointment_id=payment.appointment_id,
+                status="success",
+                payload={
+                    "appointment_id": payment.appointment_id,
+                    "payment_id": payment.id,
+                },
+            )
         if status != previous_status:
             if status == PaymentStatus.SUCCEEDED:
                 enqueue_payment_succeeded_notification(payment.appointment_id)
+                increment_counter("payments_succeeded_total")
+                record_domain_event(
+                    self.db,
+                    event_type="payment_confirmed",
+                    entity_type="payment",
+                    entity_id=payment.id,
+                    organization_id=payment.organization_id,
+                    actor_type="webhook",
+                    related_payment_id=payment.id,
+                    related_appointment_id=payment.appointment_id,
+                    status="success",
+                    payload={
+                        "provider_name": payment.provider_name,
+                        "status": status.value,
+                    },
+                )
             elif status in {PaymentStatus.FAILED, PaymentStatus.CANCELED}:
                 enqueue_payment_failed_notification(payment.appointment_id)
+                increment_counter("payments_failed_total")
+                record_domain_event(
+                    self.db,
+                    event_type="payment_failed",
+                    entity_type="payment",
+                    entity_id=payment.id,
+                    organization_id=payment.organization_id,
+                    actor_type="webhook",
+                    related_payment_id=payment.id,
+                    related_appointment_id=payment.appointment_id,
+                    status="failure",
+                    payload={
+                        "provider_name": payment.provider_name,
+                        "status": status.value,
+                    },
+                )
             if appointment_was_auto_cancelled:
                 enqueue_appointment_cancelled_notification(payment.appointment_id)
                 logger.info(
@@ -348,6 +415,22 @@ class PaymentService:
                     auto_canceled_appointments += 1
                     enqueue_appointment_cancelled_notification(appointment.id)
                     enqueue_booking_auto_canceled_payment_timeout_notification(appointment.id)
+                    increment_counter("payments_failed_total")
+                    record_domain_event(
+                        self.db,
+                        event_type="booking_auto_canceled_payment_timeout",
+                        entity_type="appointment",
+                        entity_id=appointment.id,
+                        organization_id=appointment.organization_id,
+                        actor_type="worker",
+                        related_payment_id=payment.id,
+                        related_appointment_id=appointment.id,
+                        status="failure",
+                        payload={
+                            "payment_id": payment.id,
+                            "previous_appointment_status": AppointmentStatus.PENDING_PAYMENT.value,
+                        },
+                    )
                     logger.info(
                         "domain_event=appointment_auto_canceled_due_to_payment_timeout appointment_id=%s payment_id=%s",
                         appointment.id,

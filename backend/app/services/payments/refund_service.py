@@ -14,6 +14,8 @@ from app.services.notifications.dispatcher import (
     enqueue_refund_initiated_notification,
     enqueue_refund_succeeded_notification,
 )
+from app.services.observability.domain_events import record_domain_event
+from app.services.observability.metrics import increment_counter
 from app.services.payments.earning_service import EarningService
 from app.services.payments.mock_provider import MockRefundProvider
 
@@ -92,7 +94,14 @@ class RefundService:
             raise ValueError(f"Unsupported refund provider: {provider_name}")
         return provider
 
-    def mark_refund_succeeded(self, refund, *, provider_refund_id: str | None = None):
+    def mark_refund_succeeded(
+        self,
+        refund,
+        *,
+        provider_refund_id: str | None = None,
+        actor_type: str = "system",
+        actor_id: int | None = None,
+    ):
         try:
             locked_refund = self.refund_repo.get_for_update(refund.id)
             if locked_refund is None:
@@ -128,6 +137,23 @@ class RefundService:
             raise
 
         enqueue_refund_succeeded_notification(updated.payment.appointment_id)
+        increment_counter("refunds_succeeded_total")
+        record_domain_event(
+            self.db,
+            event_type="refund_succeeded",
+            entity_type="refund",
+            entity_id=updated.id,
+            organization_id=updated.payment.organization_id,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            related_payment_id=updated.payment_id,
+            related_appointment_id=updated.payment.appointment_id,
+            status="success",
+            payload={
+                "amount_minor": updated.amount_minor,
+                "currency": updated.currency,
+            },
+        )
         logger.info(
             "domain_event=refund_processed refund_id=%s payment_id=%s status=%s amount_minor=%s",
             updated.id,
@@ -137,7 +163,13 @@ class RefundService:
         )
         return updated
 
-    def mark_refund_failed(self, refund):
+    def mark_refund_failed(
+        self,
+        refund,
+        *,
+        actor_type: str = "system",
+        actor_id: int | None = None,
+    ):
         try:
             locked_refund = self.refund_repo.get_for_update(refund.id)
             if locked_refund is None:
@@ -157,6 +189,23 @@ class RefundService:
             raise
 
         enqueue_refund_failed_notification(updated.payment.appointment_id)
+        increment_counter("refunds_failed_total")
+        record_domain_event(
+            self.db,
+            event_type="refund_failed",
+            entity_type="refund",
+            entity_id=updated.id,
+            organization_id=updated.payment.organization_id,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            related_payment_id=updated.payment_id,
+            related_appointment_id=updated.payment.appointment_id,
+            status="failure",
+            payload={
+                "amount_minor": updated.amount_minor,
+                "currency": updated.currency,
+            },
+        )
         logger.info(
             "domain_event=refund_processed refund_id=%s payment_id=%s status=%s amount_minor=%s",
             updated.id,
@@ -166,7 +215,14 @@ class RefundService:
         )
         return updated
 
-    def create_refund(self, payment, amount_minor: int):
+    def create_refund(
+        self,
+        payment,
+        amount_minor: int,
+        *,
+        actor_type: str = "system",
+        actor_id: int | None = None,
+    ):
         if amount_minor < 0:
             raise ValueError("Refund amount must be non-negative.")
         if amount_minor == 0:
@@ -193,6 +249,22 @@ class RefundService:
             raise
 
         enqueue_refund_initiated_notification(payment.appointment_id)
+        record_domain_event(
+            self.db,
+            event_type="refund_initiated",
+            entity_type="refund",
+            entity_id=refund.id,
+            organization_id=payment.organization_id,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            related_payment_id=payment.id,
+            related_appointment_id=payment.appointment_id,
+            status="info",
+            payload={
+                "amount_minor": amount_minor,
+                "currency": payment.currency,
+            },
+        )
         logger.info(
             "domain_event=refund_initiated refund_id=%s payment_id=%s amount_minor=%s",
             refund.id,
@@ -211,10 +283,12 @@ class RefundService:
                 return self.mark_refund_succeeded(
                     refund,
                     provider_refund_id=provider_result.get("provider_refund_id"),
+                    actor_type=actor_type,
+                    actor_id=actor_id,
                 )
-            return self.mark_refund_failed(refund)
+            return self.mark_refund_failed(refund, actor_type=actor_type, actor_id=actor_id)
         except Exception:
-            return self.mark_refund_failed(refund)
+            return self.mark_refund_failed(refund, actor_type=actor_type, actor_id=actor_id)
 
     def process_refund_for_cancellation(self, appointment, *, now_utc: datetime | None = None):
         payment = self.payment_repo.get_latest_for_appointment(appointment.id)

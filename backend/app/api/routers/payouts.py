@@ -55,7 +55,11 @@ def create_provider_payout(
         )
         payout_service = PayoutService(db)
         try:
-            payout = payout_service.create_payout(provider_id=provider_id)
+            payout = payout_service.create_payout(
+                provider_id=provider_id,
+                actor_type="user",
+                actor_id=current_user.id,
+            )
         except LookupError as exc:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
         except ValueError as exc:

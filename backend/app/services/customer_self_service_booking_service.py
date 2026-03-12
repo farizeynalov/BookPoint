@@ -52,7 +52,7 @@ class CustomerSelfServiceBookingService:
         if appointment.status == AppointmentStatus.CANCELLED:
             raise ValueError("Booking is already cancelled.")
 
-        updated = self.appointment_service.cancel_appointment(appointment.id)
+        updated = self.appointment_service.cancel_appointment(appointment.id, actor_type="customer")
         return self._build_summary(updated)
 
     def reschedule_booking(self, *, booking_id: int, access_token: str, scheduled_start: datetime) -> dict:
@@ -64,5 +64,6 @@ class CustomerSelfServiceBookingService:
         updated = self.appointment_service.reschedule_appointment(
             appointment.id,
             scheduled_start_utc,
+            actor_type="customer",
         )
         return self._build_summary(updated)

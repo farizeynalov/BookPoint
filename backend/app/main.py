@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.router import api_router
@@ -10,6 +10,7 @@ from app.core.errors import http_exception_handler, unhandled_exception_handler,
 from app.core.health import build_readiness_payload
 from app.core.logging import configure_logging
 from app.middleware.request_id import RequestIDMiddleware
+from app.services.observability.metrics import render_prometheus_metrics
 
 configure_logging()
 app = FastAPI(title=settings.app_name)
@@ -47,6 +48,14 @@ def health_ready() -> JSONResponse:
 @app.get("/health", tags=["health"])
 def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/metrics", tags=["system"])
+def metrics() -> PlainTextResponse:
+    return PlainTextResponse(
+        render_prometheus_metrics(),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
 
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)

@@ -14,6 +14,8 @@ from app.services.notifications.dispatcher import (
     enqueue_payout_created_notification,
     enqueue_payout_failed_notification,
 )
+from app.services.observability.domain_events import record_domain_event
+from app.services.observability.metrics import increment_counter
 from app.services.payments.mock_provider import MockPayoutProvider
 
 logger = logging.getLogger(__name__)
@@ -32,7 +34,13 @@ class PayoutService:
     def collect_provider_earnings(self, provider_id: int):
         return self.earning_repo.list_ready_for_payout(provider_id)
 
-    def create_payout(self, provider_id: int):
+    def create_payout(
+        self,
+        provider_id: int,
+        *,
+        actor_type: str = "system",
+        actor_id: int | None = None,
+    ):
         provider = self.provider_repo.get(provider_id)
         if provider is None:
             raise LookupError("Provider not found.")
@@ -72,6 +80,24 @@ class PayoutService:
             raise
 
         enqueue_payout_created_notification(payout.id)
+        increment_counter("payouts_created_total")
+        record_domain_event(
+            self.db,
+            event_type="payout_created",
+            entity_type="payout",
+            entity_id=payout.id,
+            organization_id=provider.organization_id,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            related_payout_id=payout.id,
+            status="success",
+            payload={
+                "provider_id": payout.provider_id,
+                "total_amount_minor": payout.total_amount_minor,
+                "currency": payout.currency,
+                "earning_count": len(earnings),
+            },
+        )
         logger.info(
             "domain_event=payout_created payout_id=%s provider_id=%s total_amount_minor=%s currency=%s",
             payout.id,
@@ -101,6 +127,21 @@ class PayoutService:
             self.db.rollback()
             raise
         enqueue_payout_completed_notification(updated.id)
+        increment_counter("payouts_completed_total")
+        record_domain_event(
+            self.db,
+            event_type="payout_completed",
+            entity_type="payout",
+            entity_id=updated.id,
+            organization_id=updated.provider.organization_id,
+            actor_type="worker",
+            related_payout_id=updated.id,
+            status="success",
+            payload={
+                "provider_id": updated.provider_id,
+                "provider_payout_reference": updated.provider_payout_reference,
+            },
+        )
         logger.info(
             "domain_event=payout_completed payout_id=%s provider_id=%s reference=%s",
             updated.id,
@@ -137,6 +178,21 @@ class PayoutService:
             self.db.rollback()
             raise
         enqueue_payout_failed_notification(updated.id)
+        increment_counter("payouts_failed_total")
+        record_domain_event(
+            self.db,
+            event_type="payout_failed",
+            entity_type="payout",
+            entity_id=updated.id,
+            organization_id=updated.provider.organization_id,
+            actor_type="worker",
+            related_payout_id=updated.id,
+            status="failure",
+            payload={
+                "provider_id": updated.provider_id,
+                "provider_payout_reference": updated.provider_payout_reference,
+            },
+        )
         logger.info(
             "domain_event=payout_failed payout_id=%s provider_id=%s reference=%s",
             updated.id,

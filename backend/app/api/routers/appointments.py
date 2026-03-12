@@ -31,7 +31,11 @@ def create_appointment(
     require_org_membership(db, organization_id=provider.organization_id, user=current_user)
     appointment_service = AppointmentService(db)
     try:
-        appointment = appointment_service.create_appointment(payload)
+        appointment = appointment_service.create_appointment(
+            payload,
+            actor_type="user",
+            actor_id=current_user.id,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except IntegrityError:
@@ -96,7 +100,12 @@ def cancel_appointment(
     require_org_membership(db, organization_id=existing.organization_id, user=current_user)
 
     try:
-        updated = AppointmentService(db).cancel_appointment(appointment_id, notes=payload.notes)
+        updated = AppointmentService(db).cancel_appointment(
+            appointment_id,
+            notes=payload.notes,
+            actor_type="user",
+            actor_id=current_user.id,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     return AppointmentRead.model_validate(updated)
@@ -116,7 +125,12 @@ def reschedule_appointment(
     require_org_membership(db, organization_id=existing.organization_id, user=current_user)
 
     try:
-        updated = AppointmentService(db).reschedule_appointment(appointment_id, payload.start_datetime)
+        updated = AppointmentService(db).reschedule_appointment(
+            appointment_id,
+            payload.start_datetime,
+            actor_type="user",
+            actor_id=current_user.id,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except IntegrityError:

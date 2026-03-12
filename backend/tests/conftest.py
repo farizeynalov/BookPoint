@@ -11,6 +11,7 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 from app.models.user import User
+from app.services.observability.metrics import reset_metrics_for_tests
 
 SQLALCHEMY_DATABASE_URL = "sqlite+pysqlite:///:memory:"
 
@@ -85,3 +86,8 @@ def stub_celery_send_task(monkeypatch):
         "app.workers.tasks.celery_app.send_task",
         lambda *args, **kwargs: None,
     )
+
+
+@pytest.fixture(scope="function", autouse=True)
+def reset_observability_metrics():
+    reset_metrics_for_tests()

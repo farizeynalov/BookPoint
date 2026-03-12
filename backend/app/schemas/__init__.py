@@ -1,4 +1,4 @@
-from app.schemas.admin import AdminPing
+from app.schemas.admin import AdminPing, DomainEventRead
 from app.schemas.appointment import AppointmentCancel, AppointmentCreate, AppointmentRead, AppointmentReschedule
 from app.schemas.auth import LoginRequest, TokenResponse, UserRead
 from app.schemas.customer import CustomerCreate, CustomerRead, CustomerUpdate
@@ -69,6 +69,7 @@ from app.schemas.service import ProviderServiceCreate, ServiceCreate, ServiceRea
 
 __all__ = [
     "AdminPing",
+    "DomainEventRead",
     "AppointmentCancel",
     "AppointmentCreate",
     "AppointmentRead",

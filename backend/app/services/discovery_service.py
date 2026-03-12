@@ -312,7 +312,8 @@ class DiscoveryService:
                 status=AppointmentStatus.PENDING_PAYMENT if service.requires_payment else AppointmentStatus.CONFIRMED,
                 booking_channel=BookingChannel.WEB,
                 notes=None,
-            )
+            ),
+            actor_type="customer",
         )
         if service.requires_payment:
             self.payment_service.create_checkout_session_for_appointment(appointment, provider_name="mock")
