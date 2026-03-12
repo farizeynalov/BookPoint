@@ -47,6 +47,18 @@ class PaymentType(str, Enum):
     DEPOSIT = "deposit"
 
 
+class CancellationPolicyType(str, Enum):
+    FLEXIBLE = "flexible"
+    MODERATE = "moderate"
+    STRICT = "strict"
+
+
+class RefundStatus(str, Enum):
+    PENDING = "pending"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
 class MessageDirection(str, Enum):
     INBOUND = "inbound"
     OUTBOUND = "outbound"

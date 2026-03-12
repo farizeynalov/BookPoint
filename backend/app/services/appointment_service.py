@@ -1,4 +1,5 @@
 from datetime import timedelta
+import logging
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import IntegrityError
@@ -19,6 +20,7 @@ from app.services.notifications.dispatcher import (
     enqueue_appointment_created_notification,
     enqueue_appointment_rescheduled_notification,
 )
+from app.services.payments.refund_service import RefundService
 from app.services.scheduling_service import SchedulingService
 from app.utils.datetime import ensure_aware_utc
 
@@ -27,6 +29,8 @@ RESCHEDULABLE_STATUSES = {
     AppointmentStatus.PENDING_PAYMENT,
     AppointmentStatus.CONFIRMED,
 }
+
+logger = logging.getLogger(__name__)
 
 
 def _is_overlap_constraint_error(exc: IntegrityError) -> bool:
@@ -199,6 +203,11 @@ class AppointmentService:
             )
             self.db.commit()
             enqueue_appointment_cancelled_notification(updated.id)
+            try:
+                RefundService(self.db).process_refund_for_cancellation(updated)
+            except Exception:
+                self.db.rollback()
+                logger.exception("refund_processing_failed appointment_id=%s", updated.id)
             return updated
         except Exception:
             self.db.rollback()

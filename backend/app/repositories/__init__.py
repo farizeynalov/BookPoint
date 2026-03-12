@@ -12,6 +12,7 @@ from app.repositories.provider_location_repository import ProviderLocationReposi
 from app.repositories.provider_repository import ProviderRepository
 from app.repositories.provider_service_repository import ProviderServiceRepository
 from app.repositories.provider_time_off_repository import ProviderTimeOffRepository
+from app.repositories.refund_repository import RefundRepository
 from app.repositories.service_location_repository import ServiceLocationRepository
 from app.repositories.service_repository import ServiceRepository
 from app.repositories.user_repository import UserRepository
@@ -31,6 +32,7 @@ __all__ = [
     "ProviderRepository",
     "ProviderServiceRepository",
     "ProviderTimeOffRepository",
+    "RefundRepository",
     "ServiceLocationRepository",
     "ServiceRepository",
     "UserRepository",

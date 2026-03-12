@@ -45,3 +45,4 @@ class Payment(Base, TimestampMixin):
 
     appointment = relationship("Appointment", back_populates="payments")
     organization = relationship("Organization", back_populates="payments")
+    refunds = relationship("Refund", back_populates="payment", cascade="all, delete-orphan")

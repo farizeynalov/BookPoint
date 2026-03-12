@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.models.enums import AppointmentStatus, PaymentStatus, PaymentType
 from app.repositories.appointment_repository import AppointmentRepository
 from app.repositories.payment_repository import PaymentRepository
+from app.repositories.refund_repository import RefundRepository
 from app.services.notifications.dispatcher import (
     enqueue_appointment_cancelled_notification,
     enqueue_booking_auto_canceled_payment_timeout_notification,
@@ -23,6 +24,7 @@ class PaymentService:
     def __init__(self, db: Session):
         self.db = db
         self.payment_repo = PaymentRepository(db)
+        self.refund_repo = RefundRepository(db)
         self.appointment_repo = AppointmentRepository(db)
         self._providers = {
             "mock": MockCheckoutProvider(),
@@ -63,6 +65,9 @@ class PaymentService:
                 "checkout_session_id": None,
                 "provider_name": None,
                 "expires_at": None,
+                "refund_status": None,
+                "refund_amount_minor": None,
+                "refund_processed_at": None,
             }
 
         amount_due_minor = self._required_amount_minor(service)
@@ -78,6 +83,9 @@ class PaymentService:
                 "checkout_session_id": None,
                 "provider_name": None,
                 "expires_at": None,
+                "refund_status": None,
+                "refund_amount_minor": None,
+                "refund_processed_at": None,
             }
 
         checkout_url = None
@@ -85,6 +93,7 @@ class PaymentService:
         if payment.status in {PaymentStatus.PENDING, PaymentStatus.REQUIRES_ACTION}:
             checkout_url = payment.provider_checkout_url
             expires_at = self._pending_expires_at(payment)
+        latest_refund = self.refund_repo.get_latest_for_payment(payment.id)
         return {
             "payment_required": True,
             "payment_status": payment.status,
@@ -94,6 +103,9 @@ class PaymentService:
             "checkout_session_id": payment.provider_checkout_session_id,
             "provider_name": payment.provider_name,
             "expires_at": expires_at,
+            "refund_status": latest_refund.status if latest_refund is not None else None,
+            "refund_amount_minor": latest_refund.amount_minor if latest_refund is not None else None,
+            "refund_processed_at": latest_refund.processed_at if latest_refund is not None else None,
         }
 
     def create_checkout_session_for_appointment(self, appointment, *, provider_name: str = "mock"):

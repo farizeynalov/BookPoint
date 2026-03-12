@@ -15,6 +15,7 @@ from app.models.provider_date_override import ProviderDateOverride
 from app.models.provider_location import ProviderLocation
 from app.models.provider_service import ProviderService
 from app.models.provider_time_off import ProviderTimeOff
+from app.models.refund import Refund
 from app.models.service_location import ServiceLocation
 from app.models.service import Service
 from app.models.user import User
@@ -37,6 +38,7 @@ __all__ = [
     "ProviderLocation",
     "ProviderService",
     "ProviderTimeOff",
+    "Refund",
     "ServiceLocation",
     "Service",
     "User",

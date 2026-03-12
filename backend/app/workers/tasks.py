@@ -11,6 +11,9 @@ from app.services.notifications.service import (
     send_payment_failed,
     send_payment_required,
     send_payment_succeeded,
+    send_refund_failed,
+    send_refund_initiated,
+    send_refund_succeeded,
     send_booking_cancellation,
     send_booking_confirmation,
     send_booking_reminder,
@@ -145,6 +148,33 @@ def notify_booking_auto_canceled_payment_timeout(appointment_id: int) -> dict[st
         appointment_id=appointment_id,
         event_type="booking_auto_canceled_due_to_payment_timeout",
         sender=send_booking_auto_canceled_payment_timeout,
+    )
+
+
+@celery_app.task(name="bookpoint.notifications.refund_initiated")
+def notify_refund_initiated(appointment_id: int) -> dict[str, str | int]:
+    return _execute_status_update_task(
+        appointment_id=appointment_id,
+        event_type="refund_initiated",
+        sender=send_refund_initiated,
+    )
+
+
+@celery_app.task(name="bookpoint.notifications.refund_succeeded")
+def notify_refund_succeeded(appointment_id: int) -> dict[str, str | int]:
+    return _execute_status_update_task(
+        appointment_id=appointment_id,
+        event_type="refund_succeeded",
+        sender=send_refund_succeeded,
+    )
+
+
+@celery_app.task(name="bookpoint.notifications.refund_failed")
+def notify_refund_failed(appointment_id: int) -> dict[str, str | int]:
+    return _execute_status_update_task(
+        appointment_id=appointment_id,
+        event_type="refund_failed",
+        sender=send_refund_failed,
     )
 
 

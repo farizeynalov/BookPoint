@@ -81,3 +81,21 @@ def send_booking_auto_canceled_payment_timeout(appointment: Appointment) -> dict
     payload = _build_payload(event="booking_auto_canceled_due_to_payment_timeout", appointment=appointment)
     _log_placeholder(payload)
     return payload
+
+
+def send_refund_initiated(appointment: Appointment) -> dict[str, int | str]:
+    payload = _build_payload(event="refund_initiated", appointment=appointment)
+    _log_placeholder(payload)
+    return payload
+
+
+def send_refund_succeeded(appointment: Appointment) -> dict[str, int | str]:
+    payload = _build_payload(event="refund_succeeded", appointment=appointment)
+    _log_placeholder(payload)
+    return payload
+
+
+def send_refund_failed(appointment: Appointment) -> dict[str, int | str]:
+    payload = _build_payload(event="refund_failed", appointment=appointment)
+    _log_placeholder(payload)
+    return payload

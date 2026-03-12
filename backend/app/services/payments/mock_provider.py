@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import secrets
 
-from app.models.enums import PaymentStatus
+from app.models.enums import PaymentStatus, RefundStatus
 
 
 class MockCheckoutProvider:
@@ -29,4 +29,25 @@ class MockCheckoutProvider:
             "amount_minor": str(amount_minor),
             "currency": currency.upper(),
             "payment_id": str(payment_id),
+        }
+
+
+class MockRefundProvider:
+    name = "mock"
+
+    def create_refund(
+        self,
+        *,
+        payment_id: int,
+        amount_minor: int,
+        currency: str,
+    ) -> dict[str, str]:
+        refund_id = f"mock_rf_{secrets.token_hex(12)}"
+        return {
+            "provider_name": self.name,
+            "provider_refund_id": refund_id,
+            "status": RefundStatus.SUCCEEDED.value,
+            "payment_id": str(payment_id),
+            "amount_minor": str(amount_minor),
+            "currency": currency.upper(),
         }

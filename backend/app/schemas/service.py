@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from pydantic import Field, model_validator
 
-from app.models.enums import PaymentType
+from app.models.enums import CancellationPolicyType, PaymentType
 from app.schemas.common import ORMModel, TimestampRead
 from app.utils.payment import validate_service_payment_policy
 
@@ -16,6 +16,8 @@ class ServiceBase(ORMModel):
     requires_payment: bool = False
     payment_type: PaymentType = PaymentType.FULL
     deposit_amount_minor: int | None = Field(default=None, gt=0)
+    cancellation_policy_type: CancellationPolicyType = CancellationPolicyType.FLEXIBLE
+    cancellation_window_hours: int = Field(default=24, ge=0)
     buffer_before_minutes: int = Field(default=0, ge=0)
     buffer_after_minutes: int = Field(default=0, ge=0)
     is_active: bool = True
@@ -51,6 +53,8 @@ class ServiceUpdate(ORMModel):
     requires_payment: bool | None = None
     payment_type: PaymentType | None = None
     deposit_amount_minor: int | None = Field(default=None, gt=0)
+    cancellation_policy_type: CancellationPolicyType | None = None
+    cancellation_window_hours: int | None = Field(default=None, ge=0)
     buffer_before_minutes: int | None = Field(default=None, ge=0)
     buffer_after_minutes: int | None = Field(default=None, ge=0)
     is_active: bool | None = None

@@ -4,7 +4,7 @@ from sqlalchemy import Boolean, CheckConstraint, Enum, ForeignKey, Integer, Nume
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
-from app.models.enums import PaymentType
+from app.models.enums import CancellationPolicyType, PaymentType
 
 
 class Service(Base, TimestampMixin):
@@ -21,6 +21,10 @@ class Service(Base, TimestampMixin):
         CheckConstraint(
             "(payment_type != 'deposit') OR deposit_amount_minor IS NOT NULL",
             name="ck_services_deposit_requires_amount",
+        ),
+        CheckConstraint(
+            "cancellation_window_hours >= 0",
+            name="ck_services_non_negative_cancellation_window_hours",
         ),
     )
 
@@ -43,6 +47,16 @@ class Service(Base, TimestampMixin):
         default=PaymentType.FULL,
     )
     deposit_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cancellation_policy_type: Mapped[CancellationPolicyType] = mapped_column(
+        Enum(
+            CancellationPolicyType,
+            name="cancellation_policy_type",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=False,
+        default=CancellationPolicyType.FLEXIBLE,
+    )
+    cancellation_window_hours: Mapped[int] = mapped_column(Integer, default=24, nullable=False)
     buffer_before_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     buffer_after_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

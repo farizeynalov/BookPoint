@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import Field, model_validator
 
-from app.models.enums import PaymentStatus
+from app.models.enums import PaymentStatus, RefundStatus
 from app.schemas.common import ORMModel
 
 
@@ -22,6 +22,9 @@ class BookingPaymentSummary(ORMModel):
     checkout_session_id: str | None = None
     provider_name: str | None = None
     expires_at: datetime | None = None
+    refund_status: RefundStatus | None = None
+    refund_amount_minor: int | None = None
+    refund_processed_at: datetime | None = None
 
 
 class PaymentConfirmRequest(ORMModel):
@@ -43,3 +46,18 @@ class PaymentConfirmResponse(ORMModel):
     provider_name: str
     status: PaymentStatus
     paid_at: datetime | None = None
+
+
+class ManualRefundCreate(ORMModel):
+    amount_minor: int | None = Field(default=None, ge=0)
+
+
+class RefundRead(ORMModel):
+    id: int
+    payment_id: int
+    amount_minor: int
+    currency: str
+    provider_refund_id: str | None = None
+    status: RefundStatus
+    created_at: datetime
+    processed_at: datetime | None = None

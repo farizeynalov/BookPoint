@@ -11,6 +11,9 @@ TASK_PAYMENT_REQUIRED = "bookpoint.notifications.payment_required"
 TASK_PAYMENT_SUCCEEDED = "bookpoint.notifications.payment_succeeded"
 TASK_PAYMENT_FAILED = "bookpoint.notifications.payment_failed"
 TASK_BOOKING_AUTO_CANCELED_PAYMENT_TIMEOUT = "bookpoint.notifications.booking_auto_canceled_payment_timeout"
+TASK_REFUND_INITIATED = "bookpoint.notifications.refund_initiated"
+TASK_REFUND_SUCCEEDED = "bookpoint.notifications.refund_succeeded"
+TASK_REFUND_FAILED = "bookpoint.notifications.refund_failed"
 
 
 def _enqueue_notification_task(task_name: str, appointment_id: int) -> bool:
@@ -49,3 +52,15 @@ def enqueue_payment_required_notification(appointment_id: int) -> bool:
 
 def enqueue_booking_auto_canceled_payment_timeout_notification(appointment_id: int) -> bool:
     return _enqueue_notification_task(TASK_BOOKING_AUTO_CANCELED_PAYMENT_TIMEOUT, appointment_id)
+
+
+def enqueue_refund_initiated_notification(appointment_id: int) -> bool:
+    return _enqueue_notification_task(TASK_REFUND_INITIATED, appointment_id)
+
+
+def enqueue_refund_succeeded_notification(appointment_id: int) -> bool:
+    return _enqueue_notification_task(TASK_REFUND_SUCCEEDED, appointment_id)
+
+
+def enqueue_refund_failed_notification(appointment_id: int) -> bool:
+    return _enqueue_notification_task(TASK_REFUND_FAILED, appointment_id)
