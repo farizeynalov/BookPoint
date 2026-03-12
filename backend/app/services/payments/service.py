@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import logging
 
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,8 @@ from app.services.notifications.dispatcher import (
 from app.services.payments.earning_service import EarningService
 from app.services.payments.mock_provider import MockCheckoutProvider
 from app.utils.payment import decimal_to_minor, validate_service_payment_policy
+
+logger = logging.getLogger(__name__)
 
 
 class PaymentService:
@@ -156,6 +159,12 @@ class PaymentService:
             )
             self.db.commit()
             enqueue_payment_required_notification(appointment.id)
+            logger.info(
+                "domain_event=payment_checkout_created payment_id=%s appointment_id=%s provider=%s",
+                payment.id,
+                appointment.id,
+                payment.provider_name,
+            )
             return payment, checkout_session
         except Exception:
             self.db.rollback()
@@ -208,6 +217,30 @@ class PaymentService:
         )
 
         previous_status = payment.status
+        logger.info(
+            "payment_status_update_requested payment_id=%s previous_status=%s next_status=%s provider=%s",
+            payment.id,
+            previous_status.value,
+            status.value,
+            provider_name,
+        )
+        if previous_status == status:
+            logger.info("payment_status_update_skipped_unchanged payment_id=%s status=%s", payment.id, status.value)
+            return payment
+        if previous_status in {PaymentStatus.SUCCEEDED, PaymentStatus.REFUNDED} and status in {
+            PaymentStatus.PENDING,
+            PaymentStatus.REQUIRES_ACTION,
+            PaymentStatus.FAILED,
+            PaymentStatus.CANCELED,
+        }:
+            logger.warning(
+                "payment_status_update_ignored_terminal payment_id=%s previous_status=%s requested_status=%s",
+                payment.id,
+                previous_status.value,
+                status.value,
+            )
+            return payment
+
         paid_at = datetime.now(timezone.utc) if status == PaymentStatus.SUCCEEDED else None
         appointment_was_auto_cancelled = False
         earning_created = False
@@ -241,6 +274,13 @@ class PaymentService:
                     reason_note="Auto-cancelled due to unsuccessful payment.",
                 )
             self.db.commit()
+            logger.info(
+                "domain_event=payment_status_updated payment_id=%s appointment_id=%s previous_status=%s status=%s",
+                payment.id,
+                payment.appointment_id,
+                previous_status.value,
+                status.value,
+            )
         except Exception:
             self.db.rollback()
             raise
@@ -254,6 +294,11 @@ class PaymentService:
                 enqueue_payment_failed_notification(payment.appointment_id)
             if appointment_was_auto_cancelled:
                 enqueue_appointment_cancelled_notification(payment.appointment_id)
+                logger.info(
+                    "domain_event=appointment_auto_canceled_due_to_payment_failure appointment_id=%s payment_id=%s",
+                    payment.appointment_id,
+                    payment.id,
+                )
         return payment
 
     def expire_pending_payments(
@@ -271,6 +316,7 @@ class PaymentService:
         checked = 0
         expired = 0
         auto_canceled_appointments = 0
+        failed = 0
 
         payments = self.payment_repo.list_expired_pending(cutoff_for_query)
         for stale_payment in payments:
@@ -302,12 +348,20 @@ class PaymentService:
                     auto_canceled_appointments += 1
                     enqueue_appointment_cancelled_notification(appointment.id)
                     enqueue_booking_auto_canceled_payment_timeout_notification(appointment.id)
+                    logger.info(
+                        "domain_event=appointment_auto_canceled_due_to_payment_timeout appointment_id=%s payment_id=%s",
+                        appointment.id,
+                        payment.id,
+                    )
             except Exception:
                 self.db.rollback()
-                raise
+                failed += 1
+                logger.exception("payment_expiration_item_failed payment_id=%s", stale_payment.id)
+                continue
 
         return {
             "checked": checked,
             "expired": expired,
             "auto_canceled_appointments": auto_canceled_appointments,
+            "failed": failed,
         }

@@ -2,6 +2,7 @@ from app.models.appointment import Appointment
 from app.models.conversation_state import ConversationState
 from app.models.customer import Customer
 from app.models.customer_channel_identity import CustomerChannelIdentity
+from app.models.idempotency_key import IdempotencyKey
 from app.models.message_log import MessageLog
 from app.models.notification import Notification
 from app.models.organization import Organization
@@ -27,6 +28,7 @@ __all__ = [
     "ConversationState",
     "Customer",
     "CustomerChannelIdentity",
+    "IdempotencyKey",
     "MessageLog",
     "Notification",
     "Organization",

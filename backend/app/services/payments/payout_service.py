@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 
 from sqlalchemy.orm import Session
 
@@ -14,6 +15,8 @@ from app.services.notifications.dispatcher import (
     enqueue_payout_failed_notification,
 )
 from app.services.payments.mock_provider import MockPayoutProvider
+
+logger = logging.getLogger(__name__)
 
 
 class PayoutService:
@@ -69,6 +72,13 @@ class PayoutService:
             raise
 
         enqueue_payout_created_notification(payout.id)
+        logger.info(
+            "domain_event=payout_created payout_id=%s provider_id=%s total_amount_minor=%s currency=%s",
+            payout.id,
+            payout.provider_id,
+            payout.total_amount_minor,
+            payout.currency,
+        )
         return payout
 
     def mark_payout_completed(self, payout, *, provider_payout_reference: str | None = None):
@@ -76,6 +86,9 @@ class PayoutService:
             locked = self.payout_repo.get_for_update(payout.id)
             if locked is None:
                 raise LookupError("Payout not found.")
+            if locked.status == PayoutStatus.COMPLETED:
+                self.db.commit()
+                return locked
             updated = self.payout_repo.update(
                 locked,
                 auto_commit=False,
@@ -88,6 +101,12 @@ class PayoutService:
             self.db.rollback()
             raise
         enqueue_payout_completed_notification(updated.id)
+        logger.info(
+            "domain_event=payout_completed payout_id=%s provider_id=%s reference=%s",
+            updated.id,
+            updated.provider_id,
+            updated.provider_payout_reference,
+        )
         return updated
 
     def mark_payout_failed(self, payout, *, provider_payout_reference: str | None = None):
@@ -95,6 +114,9 @@ class PayoutService:
             locked = self.payout_repo.get_for_update(payout.id)
             if locked is None:
                 raise LookupError("Payout not found.")
+            if locked.status == PayoutStatus.FAILED:
+                self.db.commit()
+                return locked
             linked_earnings = self.earning_repo.list_by_payout(locked.id)
             for earning in linked_earnings:
                 self.earning_repo.update(
@@ -115,6 +137,12 @@ class PayoutService:
             self.db.rollback()
             raise
         enqueue_payout_failed_notification(updated.id)
+        logger.info(
+            "domain_event=payout_failed payout_id=%s provider_id=%s reference=%s",
+            updated.id,
+            updated.provider_id,
+            updated.provider_payout_reference,
+        )
         return updated
 
     def _get_provider(self, provider_name: str):
@@ -132,18 +160,24 @@ class PayoutService:
 
         for pending in pending_payouts:
             processed += 1
-            payout = self.payout_repo.get_for_update(pending.id)
-            if payout is None:
-                continue
-            if payout.status != PayoutStatus.PENDING:
-                continue
             try:
+                payout = self.payout_repo.get_for_update(pending.id)
+                if payout is None:
+                    continue
+                if payout.status != PayoutStatus.PENDING:
+                    continue
                 self.payout_repo.update(
                     payout,
                     auto_commit=False,
                     status=PayoutStatus.PROCESSING,
                 )
                 self.db.commit()
+            except Exception:
+                self.db.rollback()
+                failed += 1
+                logger.exception("payout_processing_transition_failed payout_id=%s", pending.id)
+                continue
+            try:
                 provider_result = provider.create_payout(
                     payout_id=payout.id,
                     provider_id=payout.provider_id,
@@ -164,11 +198,18 @@ class PayoutService:
                 failed += 1
             except Exception:
                 self.db.rollback()
-                self.mark_payout_failed(payout)
+                try:
+                    self.mark_payout_failed(payout)
+                except Exception:
+                    self.db.rollback()
+                    logger.exception("payout_processing_mark_failed_error payout_id=%s", pending.id)
                 failed += 1
+                logger.exception("payout_processing_item_failed payout_id=%s", pending.id)
 
-        return {
+        result = {
             "processed": processed,
             "completed": completed,
             "failed": failed,
         }
+        logger.info("payout_processing_summary %s", result)
+        return result

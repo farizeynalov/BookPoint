@@ -73,3 +73,15 @@ def auth_headers(client: TestClient, seeded_user: User) -> dict[str, str]:
     assert "access_token" in payload, payload
     token = payload["access_token"]
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(scope="function", autouse=True)
+def stub_celery_send_task(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.notifications.dispatcher.celery_app.send_task",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "app.workers.tasks.celery_app.send_task",
+        lambda *args, **kwargs: None,
+    )

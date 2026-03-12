@@ -316,7 +316,7 @@ def expire_pending_payments(expiration_minutes: int | None = None) -> dict[str, 
     try:
         minutes = expiration_minutes if expiration_minutes is not None else settings.payment_pending_expiration_minutes
         result = PaymentService(db).expire_pending_payments(expiration_minutes=minutes)
-        logger.info("payment_expiration_complete %s", result)
+        logger.info("payment_expiration_complete expiration_minutes=%s result=%s", minutes, result)
         return result
     except Exception:
         db.rollback()
@@ -331,7 +331,7 @@ def process_pending_payouts(provider_name: str = "mock") -> dict[str, int]:
     db = SessionLocal()
     try:
         result = PayoutService(db).process_pending_payouts(provider_name=provider_name)
-        logger.info("payout_processing_complete %s", result)
+        logger.info("payout_processing_complete provider=%s result=%s", provider_name, result)
         return result
     except Exception:
         db.rollback()
@@ -361,50 +361,56 @@ def schedule_upcoming_reminders(lookahead_minutes: int = REMINDER_LOOKAHEAD_MINU
         )
         for appointment in appointments:
             checked += 1
-            if notification_repo.exists_for_appointment(
-                appointment_id=appointment.id,
-                notification_type=NotificationType.REMINDER,
-                statuses=(NotificationStatus.PENDING, NotificationStatus.SENT),
-            ):
-                skipped += 1
-                continue
-
-            payload = {
-                "event": "appointment_reminder_queued",
-                "appointment_id": appointment.id,
-                "provider_id": appointment.provider_id,
-                "customer_id": appointment.customer_id,
-                "scheduled_start": appointment.start_datetime.isoformat(),
-                "scheduled_end": appointment.end_datetime.isoformat(),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-            pending_notification = notification_repo.create(
-                auto_commit=False,
-                appointment_id=appointment.id,
-                type=NotificationType.REMINDER,
-                status=NotificationStatus.PENDING,
-                scheduled_for=appointment.start_datetime,
-                payload_json=payload,
-            )
-            db.commit()
             try:
-                celery_app.send_task(REMINDER_TASK_NAME, args=[appointment.id])
-                queued += 1
-                logger.info("reminder_scheduler_queued appointment_id=%s", appointment.id)
-            except Exception:
-                notification_repo.update(
-                    pending_notification,
+                if notification_repo.exists_for_appointment(
+                    appointment_id=appointment.id,
+                    notification_type=NotificationType.REMINDER,
+                    statuses=(NotificationStatus.PENDING, NotificationStatus.SENT),
+                ):
+                    skipped += 1
+                    continue
+
+                payload = {
+                    "event": "appointment_reminder_queued",
+                    "appointment_id": appointment.id,
+                    "provider_id": appointment.provider_id,
+                    "customer_id": appointment.customer_id,
+                    "scheduled_start": appointment.start_datetime.isoformat(),
+                    "scheduled_end": appointment.end_datetime.isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                pending_notification = notification_repo.create(
                     auto_commit=False,
-                    status=NotificationStatus.FAILED,
-                    payload_json={
-                        "event": "appointment_reminder_queue_failed",
-                        "appointment_id": appointment.id,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    },
+                    appointment_id=appointment.id,
+                    type=NotificationType.REMINDER,
+                    status=NotificationStatus.PENDING,
+                    scheduled_for=appointment.start_datetime,
+                    payload_json=payload,
                 )
                 db.commit()
+                try:
+                    celery_app.send_task(REMINDER_TASK_NAME, args=[appointment.id])
+                    queued += 1
+                    logger.info("reminder_scheduler_queued appointment_id=%s", appointment.id)
+                except Exception:
+                    notification_repo.update(
+                        pending_notification,
+                        auto_commit=False,
+                        status=NotificationStatus.FAILED,
+                        payload_json={
+                            "event": "appointment_reminder_queue_failed",
+                            "appointment_id": appointment.id,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        },
+                    )
+                    db.commit()
+                    failed += 1
+                    logger.exception("reminder_scheduler_enqueue_failed appointment_id=%s", appointment.id)
+            except Exception:
+                db.rollback()
                 failed += 1
-                logger.exception("reminder_scheduler_enqueue_failed appointment_id=%s", appointment.id)
+                logger.exception("reminder_scheduler_item_failed appointment_id=%s", appointment.id)
+                continue
 
         result = {
             "checked": checked,
@@ -412,7 +418,7 @@ def schedule_upcoming_reminders(lookahead_minutes: int = REMINDER_LOOKAHEAD_MINU
             "skipped": skipped,
             "failed": failed,
         }
-        logger.info("reminder_scheduler_complete %s", result)
+        logger.info("reminder_scheduler_complete lookahead_minutes=%s result=%s", lookahead_minutes, result)
         return result
     except Exception:
         db.rollback()

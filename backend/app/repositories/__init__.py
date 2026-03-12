@@ -1,6 +1,7 @@
 from app.repositories.appointment_repository import AppointmentRepository
 from app.repositories.customer_identity_repository import CustomerIdentityRepository
 from app.repositories.customer_repository import CustomerRepository
+from app.repositories.idempotency_repository import IdempotencyRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.organization_location_repository import OrganizationLocationRepository
 from app.repositories.organization_member_repository import OrganizationMemberRepository
@@ -23,6 +24,7 @@ __all__ = [
     "AppointmentRepository",
     "CustomerIdentityRepository",
     "CustomerRepository",
+    "IdempotencyRepository",
     "NotificationRepository",
     "OrganizationLocationRepository",
     "OrganizationMemberRepository",

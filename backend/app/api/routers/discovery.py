@@ -1,6 +1,7 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,12 @@ from app.schemas.discovery import (
     DiscoverySlotRead,
 )
 from app.services.discovery_service import DiscoveryService
+from app.services.idempotency_service import (
+    IDEMPOTENCY_HEADER,
+    IdempotencyConflictError,
+    IdempotencyService,
+    IdempotencyValidationError,
+)
 
 router = APIRouter()
 
@@ -118,31 +125,58 @@ def list_discovery_slots(
 @router.post("/bookings", response_model=DiscoveryBookingConfirmation, status_code=status.HTTP_201_CREATED)
 def create_discovery_booking(
     payload: DiscoveryBookingCreate,
+    idempotency_key: str | None = Header(default=None, alias=IDEMPOTENCY_HEADER),
     db: Session = Depends(get_db),
-) -> DiscoveryBookingConfirmation:
+) -> DiscoveryBookingConfirmation | JSONResponse:
+    idempotency_service = IdempotencyService(db)
+    try:
+        start_result = idempotency_service.start_request(
+            idempotency_key=idempotency_key,
+            scope="discovery:create_booking",
+            request_payload=payload.model_dump(mode="json"),
+        )
+    except IdempotencyValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except IdempotencyConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    if start_result.replay_response is not None:
+        return start_result.replay_response
+
     discovery_service = DiscoveryService(db)
     try:
-        appointment, customer, payment_summary = discovery_service.create_public_booking(payload)
-    except Exception as exc:
-        _raise_discovery_error(exc)
+        try:
+            appointment, customer, payment_summary = discovery_service.create_public_booking(payload)
+        except Exception as exc:
+            _raise_discovery_error(exc)
 
-    return DiscoveryBookingConfirmation.model_validate(
-        {
-            "appointment_id": appointment.id,
-            "booking_reference": appointment.booking_reference,
-            "booking_access_token": appointment.booking_access_token,
-            "organization_id": appointment.organization_id,
-            "organization_name": appointment.organization.name,
-            "location_id": appointment.location_id,
-            "location_name": appointment.location.name,
-            "provider_id": appointment.provider_id,
-            "provider_name": appointment.provider.display_name,
-            "service_id": appointment.service_id,
-            "service_name": appointment.service.name if appointment.service is not None else None,
-            "customer_id": customer.id,
-            "scheduled_start": appointment.start_datetime,
-            "scheduled_end": appointment.end_datetime,
-            "status": appointment.status,
-            "payment": payment_summary,
-        }
-    )
+        response_model = DiscoveryBookingConfirmation.model_validate(
+            {
+                "appointment_id": appointment.id,
+                "booking_reference": appointment.booking_reference,
+                "booking_access_token": appointment.booking_access_token,
+                "organization_id": appointment.organization_id,
+                "organization_name": appointment.organization.name,
+                "location_id": appointment.location_id,
+                "location_name": appointment.location.name,
+                "provider_id": appointment.provider_id,
+                "provider_name": appointment.provider.display_name,
+                "service_id": appointment.service_id,
+                "service_name": appointment.service.name if appointment.service is not None else None,
+                "customer_id": customer.id,
+                "scheduled_start": appointment.start_datetime,
+                "scheduled_end": appointment.end_datetime,
+                "status": appointment.status,
+                "payment": payment_summary,
+            }
+        )
+        idempotency_service.finalize_success(
+            record=start_result.record,
+            status_code=status.HTTP_201_CREATED,
+            response_body=response_model.model_dump(mode="json"),
+            resource_type="appointment",
+            resource_id=response_model.appointment_id,
+        )
+        return response_model
+    except Exception:
+        idempotency_service.abort(record=start_result.record)
+        raise

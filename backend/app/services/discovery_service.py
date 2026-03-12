@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+import logging
 
 from sqlalchemy import and_, exists, select
 from sqlalchemy.exc import IntegrityError
@@ -27,6 +28,8 @@ from app.services.payments.service import PaymentService
 from app.services.scheduling_service import SchedulingService
 from app.utils.datetime import ensure_aware_utc
 from app.utils.phone import normalize_phone_number
+
+logger = logging.getLogger(__name__)
 
 
 class DiscoveryService:
@@ -314,4 +317,12 @@ class DiscoveryService:
         if service.requires_payment:
             self.payment_service.create_checkout_session_for_appointment(appointment, provider_name="mock")
         payment_summary = self.payment_service.get_customer_payment_summary(appointment)
+        logger.info(
+            "domain_event=booking_created appointment_id=%s organization_id=%s provider_id=%s service_id=%s payment_required=%s",
+            appointment.id,
+            appointment.organization_id,
+            appointment.provider_id,
+            appointment.service_id,
+            service.requires_payment,
+        )
         return appointment, customer, payment_summary

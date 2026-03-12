@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
+import logging
 
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,8 @@ from app.services.notifications.dispatcher import (
 )
 from app.services.payments.earning_service import EarningService
 from app.services.payments.mock_provider import MockRefundProvider
+
+logger = logging.getLogger(__name__)
 
 
 class RefundService:
@@ -94,6 +97,9 @@ class RefundService:
             locked_refund = self.refund_repo.get_for_update(refund.id)
             if locked_refund is None:
                 raise LookupError("Refund not found.")
+            if locked_refund.status == RefundStatus.SUCCEEDED:
+                self.db.commit()
+                return locked_refund
             processed_at = datetime.now(timezone.utc)
             updated = self.refund_repo.update(
                 locked_refund,
@@ -122,6 +128,13 @@ class RefundService:
             raise
 
         enqueue_refund_succeeded_notification(updated.payment.appointment_id)
+        logger.info(
+            "domain_event=refund_processed refund_id=%s payment_id=%s status=%s amount_minor=%s",
+            updated.id,
+            updated.payment_id,
+            updated.status.value,
+            updated.amount_minor,
+        )
         return updated
 
     def mark_refund_failed(self, refund):
@@ -129,6 +142,9 @@ class RefundService:
             locked_refund = self.refund_repo.get_for_update(refund.id)
             if locked_refund is None:
                 raise LookupError("Refund not found.")
+            if locked_refund.status == RefundStatus.FAILED:
+                self.db.commit()
+                return locked_refund
             updated = self.refund_repo.update(
                 locked_refund,
                 auto_commit=False,
@@ -141,6 +157,13 @@ class RefundService:
             raise
 
         enqueue_refund_failed_notification(updated.payment.appointment_id)
+        logger.info(
+            "domain_event=refund_processed refund_id=%s payment_id=%s status=%s amount_minor=%s",
+            updated.id,
+            updated.payment_id,
+            updated.status.value,
+            updated.amount_minor,
+        )
         return updated
 
     def create_refund(self, payment, amount_minor: int):
@@ -170,6 +193,12 @@ class RefundService:
             raise
 
         enqueue_refund_initiated_notification(payment.appointment_id)
+        logger.info(
+            "domain_event=refund_initiated refund_id=%s payment_id=%s amount_minor=%s",
+            refund.id,
+            payment.id,
+            amount_minor,
+        )
 
         provider = self._get_provider(payment.provider_name)
         try:
