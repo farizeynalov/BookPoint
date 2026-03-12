@@ -1,4 +1,6 @@
-from sqlalchemy import select
+from datetime import datetime
+
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.idempotency_key import IdempotencyKey
@@ -43,3 +45,11 @@ class IdempotencyRepository:
         self.db.flush()
         if auto_commit:
             self.db.commit()
+
+    def delete_older_than(self, cutoff_datetime: datetime, *, auto_commit: bool = True) -> int:
+        stmt = delete(IdempotencyKey).where(IdempotencyKey.created_at < cutoff_datetime)
+        result = self.db.execute(stmt)
+        deleted = int(result.rowcount or 0)
+        if auto_commit:
+            self.db.commit()
+        return deleted

@@ -177,6 +177,34 @@ From `backend/`:
 pytest
 ```
 
+## Operations Helpers (Phase 6.4)
+
+Runtime posture:
+
+```bash
+python -m scripts.check_runtime
+```
+
+Run retention cleanup once:
+
+```bash
+python -m scripts.run_cleanup_once
+```
+
+Backup / restore helpers:
+
+```bash
+./scripts/backup_db.sh [optional-output-file.sql]
+./scripts/restore_db.sh <backup-file.sql>
+```
+
+PowerShell equivalents:
+
+```powershell
+./scripts/backup_db.ps1 [-OutputPath backups\bookpoint.sql]
+./scripts/restore_db.ps1 -InputPath backups\bookpoint.sql
+```
+
 Initial tests cover:
 
 - auth login/me

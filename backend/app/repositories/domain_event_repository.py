@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.domain_event import DomainEvent
@@ -53,3 +53,11 @@ class DomainEventRepository:
             stmt = stmt.where(DomainEvent.created_at <= date_to)
         stmt = stmt.order_by(DomainEvent.created_at.desc(), DomainEvent.id.desc()).limit(max(1, min(limit, 500)))
         return list(self.db.scalars(stmt))
+
+    def delete_older_than(self, cutoff_datetime: datetime, *, auto_commit: bool = True) -> int:
+        stmt = delete(DomainEvent).where(DomainEvent.created_at < cutoff_datetime)
+        result = self.db.execute(stmt)
+        deleted = int(result.rowcount or 0)
+        if auto_commit:
+            self.db.commit()
+        return deleted

@@ -10,6 +10,13 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 DEFAULT_SECRET_PLACEHOLDER = "change-me-in-production"
+INSECURE_SECRET_VALUES = {
+    "",
+    DEFAULT_SECRET_PLACEHOLDER,
+    "change-this-secret",
+    "changeme",
+    "secret",
+}
 
 
 class Settings(BaseSettings):
@@ -22,8 +29,12 @@ class Settings(BaseSettings):
 
     app_name: str = "BookPoint API"
     app_env: str = "development"
+    environment: str | None = None
     debug: bool = False
     api_v1_prefix: str = "/api/v1"
+    enable_docs: bool = True
+    enable_metrics: bool = True
+    enable_admin_internal_endpoints: bool = True
 
     secret_key: str = DEFAULT_SECRET_PLACEHOLDER
     jwt_algorithm: str = "HS256"
@@ -33,6 +44,12 @@ class Settings(BaseSettings):
     payment_pending_expiration_minutes: int = 15
     payment_expiration_check_interval_seconds: int = 60
     payout_processing_interval_seconds: int = 300
+    payout_processing_provider_name: str = "mock"
+    reminder_schedule_interval_seconds: int = 300
+    reminder_lookahead_minutes: int = 60
+    ops_cleanup_interval_seconds: int = 3600
+    domain_events_retention_days: int = 90
+    idempotency_keys_retention_days: int = 14
     enable_rate_limiting: bool = True
     rate_limit_use_redis: bool = False
     rate_limit_fallback_to_memory: bool = True
@@ -105,8 +122,13 @@ class Settings(BaseSettings):
         raise ValueError("Unsupported value for debug.")
 
     @property
+    def resolved_environment(self) -> str:
+        candidate = (self.environment or self.app_env).strip().lower()
+        return candidate or "development"
+
+    @property
     def is_production(self) -> bool:
-        return self.app_env.strip().lower() in {"production", "prod"}
+        return self.resolved_environment in {"production", "prod"}
 
     def _validate_cors_structure(self) -> None:
         for origin in self.cors_origins:
@@ -121,20 +143,28 @@ class Settings(BaseSettings):
                 raise ValueError(f"CORS origin must not include path/query/fragment: '{origin}'.")
 
     def validate_runtime_safety(self) -> None:
+        if self.environment and self.app_env:
+            if self.environment.strip().lower() != self.app_env.strip().lower():
+                logger.warning("APP_ENV and ENVIRONMENT differ; using ENVIRONMENT=%s", self.environment.strip())
+
+        normalized_secret = self.secret_key.strip().lower()
         if self.is_production:
-            if self.secret_key == DEFAULT_SECRET_PLACEHOLDER or not self.secret_key.strip():
+            if normalized_secret in INSECURE_SECRET_VALUES:
                 raise ValueError("SECRET_KEY must be set to a non-default value in production.")
             if self.debug:
                 raise ValueError("DEBUG mode must be disabled in production.")
             if self.payment_webhooks_enabled and not (self.payment_webhook_secret and self.payment_webhook_secret.strip()):
                 raise ValueError("PAYMENT_WEBHOOK_SECRET is required when payment webhooks are enabled in production.")
             if not self.enable_rate_limiting:
-                logger.warning("Rate limiting is disabled in production mode.")
-        elif self.secret_key == DEFAULT_SECRET_PLACEHOLDER:
+                raise ValueError("ENABLE_RATE_LIMITING must remain enabled in production.")
+            if self.enable_docs:
+                logger.warning("ENABLE_DOCS is enabled in production mode. Disable unless access is strictly internal.")
+        elif normalized_secret in INSECURE_SECRET_VALUES:
             logger.warning("Using default SECRET_KEY outside production. Do not use this in deployed environments.")
 
         self._validate_cors_structure()
         self._validate_rate_limit_structure()
+        self._validate_runtime_value_ranges()
 
     def _validate_rate_limit_structure(self) -> None:
         integer_fields = (
@@ -161,6 +191,22 @@ class Settings(BaseSettings):
         )
         if any(value <= 0 for value in integer_fields):
             raise ValueError("Rate limit limits and windows must be positive integers.")
+
+    def _validate_runtime_value_ranges(self) -> None:
+        numeric_fields = (
+            self.payment_pending_expiration_minutes,
+            self.payment_expiration_check_interval_seconds,
+            self.payout_processing_interval_seconds,
+            self.reminder_schedule_interval_seconds,
+            self.reminder_lookahead_minutes,
+            self.ops_cleanup_interval_seconds,
+            self.domain_events_retention_days,
+            self.idempotency_keys_retention_days,
+        )
+        if any(value <= 0 for value in numeric_fields):
+            raise ValueError("Runtime scheduling and retention values must be positive integers.")
+        if not self.payout_processing_provider_name.strip():
+            raise ValueError("PAYOUT_PROCESSING_PROVIDER_NAME must be non-empty.")
 
     @model_validator(mode="after")
     def _run_runtime_validation(self):

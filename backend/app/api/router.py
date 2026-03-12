@@ -20,6 +20,7 @@ from app.api.routers import (
     scheduling,
     services,
 )
+from app.core.config import settings
 
 api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -54,4 +55,5 @@ api_router.include_router(provider_time_off.router, prefix="/provider-time-off",
 api_router.include_router(provider_date_overrides.router, prefix="/provider-date-overrides", tags=["provider-date-overrides"])
 api_router.include_router(scheduling.router, prefix="/scheduling", tags=["scheduling"])
 api_router.include_router(appointments.router, prefix="/appointments", tags=["appointments"])
-api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
+if settings.enable_admin_internal_endpoints:
+    api_router.include_router(admin.router, prefix="/admin", tags=["admin"])

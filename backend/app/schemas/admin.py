@@ -23,3 +23,17 @@ class DomainEventRead(ORMModel):
     status: str
     payload_json: dict[str, Any] | None = None
     created_at: datetime
+
+
+class SystemReadinessSummary(ORMModel):
+    environment: str
+    docs_enabled: bool
+    metrics_enabled: bool
+    admin_internal_endpoints_enabled: bool
+    rate_limiting_enabled: bool
+    database_reachable: bool
+    redis_reachable: bool
+    dependencies: dict[str, dict[str, Any]]
+    migrations: dict[str, Any]
+    cleanup_jobs: dict[str, Any]
+    warnings: list[str]

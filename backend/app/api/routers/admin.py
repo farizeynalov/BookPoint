@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
+from app.core.health import build_readiness_payload
 from app.db.session import get_db
 from app.dependencies.rate_limit import build_identity_key, enforce_rate_limit
 from app.dependencies.auth import get_current_active_user, require_org_membership, require_platform_admin
@@ -11,9 +13,21 @@ from app.models.enums import MembershipRole
 from app.models.user import User
 from app.repositories.domain_event_repository import DomainEventRepository
 from app.models.organization import Organization
-from app.schemas.admin import AdminPing, DomainEventRead
+from app.schemas.admin import AdminPing, DomainEventRead, SystemReadinessSummary
+from app.services.operations.migration_status import get_migration_status
 
-router = APIRouter()
+REMINDER_TASK_NAME = "bookpoint.notifications.appointment_reminder"
+PAYMENT_EXPIRATION_TASK_NAME = "bookpoint.payments.expire_pending"
+PAYOUT_PROCESSING_TASK_NAME = "bookpoint.payouts.process_pending"
+OPS_CLEANUP_TASK_NAME = "bookpoint.ops.cleanup_operational_data"
+
+
+def _require_admin_internal_endpoints_enabled() -> None:
+    if not settings.enable_admin_internal_endpoints:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+
+router = APIRouter(dependencies=[Depends(_require_admin_internal_endpoints_enabled)])
 
 
 @router.get("/ping", response_model=AdminPing)
@@ -28,6 +42,58 @@ def admin_stats(
 ) -> dict[str, int]:
     organizations_count = db.scalar(select(func.count(Organization.id))) or 0
     return {"organizations_count": organizations_count}
+
+
+@router.get("/system/readiness-summary", response_model=SystemReadinessSummary)
+def get_system_readiness_summary(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_platform_admin),
+) -> SystemReadinessSummary:
+    _, dependency_payload = build_readiness_payload()
+    checks = dependency_payload.get("checks", {})
+    database_ok = bool(isinstance(checks, dict) and checks.get("database", {}).get("status") == "ok")
+    redis_ok = bool(isinstance(checks, dict) and checks.get("redis", {}).get("status") == "ok")
+
+    migration_status = get_migration_status(db)
+    warnings: list[str] = []
+    if settings.enable_docs and settings.is_production:
+        warnings.append("ENABLE_DOCS is true in production.")
+    if not settings.enable_rate_limiting:
+        warnings.append("ENABLE_RATE_LIMITING is disabled.")
+    if not database_ok:
+        warnings.append("Database dependency check is failing.")
+    if not redis_ok:
+        warnings.append("Redis dependency check is failing.")
+    if not bool(migration_status.get("up_to_date")):
+        warnings.append("Database migration revision is not at head.")
+
+    return SystemReadinessSummary.model_validate(
+        {
+            "environment": settings.resolved_environment,
+            "docs_enabled": settings.enable_docs,
+            "metrics_enabled": settings.enable_metrics,
+            "admin_internal_endpoints_enabled": settings.enable_admin_internal_endpoints,
+            "rate_limiting_enabled": settings.enable_rate_limiting,
+            "database_reachable": database_ok,
+            "redis_reachable": redis_ok,
+            "dependencies": checks if isinstance(checks, dict) else {},
+            "migrations": migration_status,
+            "cleanup_jobs": {
+                "task_name": OPS_CLEANUP_TASK_NAME,
+                "interval_seconds": settings.ops_cleanup_interval_seconds,
+                "retention_days": {
+                    "domain_events": settings.domain_events_retention_days,
+                    "idempotency_keys": settings.idempotency_keys_retention_days,
+                },
+                "related_periodic_tasks": {
+                    "reminder_scheduler": REMINDER_TASK_NAME,
+                    "payment_expiration": PAYMENT_EXPIRATION_TASK_NAME,
+                    "payout_processing": PAYOUT_PROCESSING_TASK_NAME,
+                },
+            },
+            "warnings": warnings,
+        }
+    )
 
 
 def _require_event_visibility_access(

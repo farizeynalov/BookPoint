@@ -3,42 +3,70 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    command: sh -c "echo '[api] applying migrations and starting server' && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     env_file:
       - .env
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      ENABLE_DOCS: ${ENABLE_DOCS:-true}
+      ENABLE_METRICS: ${ENABLE_METRICS:-true}
+      ENABLE_ADMIN_INTERNAL_ENDPOINTS: ${ENABLE_ADMIN_INTERNAL_ENDPOINTS:-true}
+      ENABLE_RATE_LIMITING: ${ENABLE_RATE_LIMITING:-true}
     volumes:
       - ./:/app
     ports:
       - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=2)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   worker:
     build:
       context: .
       dockerfile: Dockerfile
-    command: celery -A app.workers.celery_app:celery_app worker --loglevel=info
+    command: sh -c "echo '[worker] starting celery worker' && celery -A app.workers.celery_app:celery_app worker --loglevel=${WORKER_LOG_LEVEL:-info}"
     env_file:
       - .env
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
     volumes:
       - ./:/app
+    restart: unless-stopped
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   beat:
     build:
       context: .
       dockerfile: Dockerfile
-    command: celery -A app.workers.celery_app:celery_app beat --loglevel=info
+    command: sh -c "echo '[beat] starting celery beat' && celery -A app.workers.celery_app:celery_app beat --loglevel=${WORKER_LOG_LEVEL:-info}"
     env_file:
       - .env
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
     volumes:
       - ./:/app
+    restart: unless-stopped
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   db:
     image: postgres:16
@@ -50,6 +78,12 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7
@@ -57,6 +91,12 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:

@@ -29,6 +29,7 @@ from app.services.notifications.service import (
 )
 from app.services.observability.domain_events import record_domain_event
 from app.services.observability.metrics import increment_counter
+from app.services.operations.cleanup_service import OperationalCleanupService
 from app.services.payments.payout_service import PayoutService
 from app.services.payments.service import PaymentService
 from app.workers.celery_app import celery_app
@@ -36,9 +37,10 @@ from app.workers.celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 REMINDER_TASK_NAME = "bookpoint.notifications.appointment_reminder"
-REMINDER_LOOKAHEAD_MINUTES = 60
+REMINDER_LOOKAHEAD_MINUTES = settings.reminder_lookahead_minutes
 PAYMENT_EXPIRATION_TASK_NAME = "bookpoint.payments.expire_pending"
 PAYOUT_PROCESSING_TASK_NAME = "bookpoint.payouts.process_pending"
+OPS_CLEANUP_TASK_NAME = "bookpoint.ops.cleanup_operational_data"
 
 
 @contextmanager
@@ -361,7 +363,7 @@ def expire_pending_payments(expiration_minutes: int | None = None) -> dict[str, 
 
 
 @celery_app.task(name=PAYOUT_PROCESSING_TASK_NAME)
-def process_pending_payouts(provider_name: str = "mock") -> dict[str, int]:
+def process_pending_payouts(provider_name: str = settings.payout_processing_provider_name) -> dict[str, int]:
     with _worker_correlation(PAYOUT_PROCESSING_TASK_NAME):
         increment_counter("worker_runs_total")
         db = SessionLocal()
@@ -373,6 +375,35 @@ def process_pending_payouts(provider_name: str = "mock") -> dict[str, int]:
             db.rollback()
             increment_counter("worker_failures_total")
             logger.exception("payout_processing_failed")
+            raise
+        finally:
+            db.close()
+
+
+@celery_app.task(name=OPS_CLEANUP_TASK_NAME)
+def cleanup_operational_data(
+    domain_events_retention_days: int | None = None,
+    idempotency_keys_retention_days: int | None = None,
+) -> dict[str, object]:
+    with _worker_correlation(OPS_CLEANUP_TASK_NAME):
+        increment_counter("worker_runs_total")
+        db = SessionLocal()
+        try:
+            result = OperationalCleanupService(db).cleanup_operational_data(
+                domain_events_retention_days=domain_events_retention_days,
+                idempotency_keys_retention_days=idempotency_keys_retention_days,
+            )
+            logger.info(
+                "ops_cleanup_complete domain_events_retention_days=%s idempotency_keys_retention_days=%s result=%s",
+                domain_events_retention_days or settings.domain_events_retention_days,
+                idempotency_keys_retention_days or settings.idempotency_keys_retention_days,
+                result,
+            )
+            return result
+        except Exception:
+            db.rollback()
+            increment_counter("worker_failures_total")
+            logger.exception("ops_cleanup_failed")
             raise
         finally:
             db.close()
