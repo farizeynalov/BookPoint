@@ -1,24 +1,29 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
+from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.enums import AppointmentStatus, NotificationStatus, NotificationType
 from app.repositories.appointment_repository import AppointmentRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.services.notifications.service import (
+    send_booking_auto_canceled_payment_timeout,
     send_payment_failed,
+    send_payment_required,
     send_payment_succeeded,
     send_booking_cancellation,
     send_booking_confirmation,
     send_booking_reminder,
     send_booking_reschedule,
 )
+from app.services.payments.service import PaymentService
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
 REMINDER_TASK_NAME = "bookpoint.notifications.appointment_reminder"
 REMINDER_LOOKAHEAD_MINUTES = 60
+PAYMENT_EXPIRATION_TASK_NAME = "bookpoint.payments.expire_pending"
 
 
 @celery_app.task(name="bookpoint.ping")
@@ -116,12 +121,30 @@ def notify_payment_succeeded(appointment_id: int) -> dict[str, str | int]:
     )
 
 
+@celery_app.task(name="bookpoint.notifications.payment_required")
+def notify_payment_required(appointment_id: int) -> dict[str, str | int]:
+    return _execute_status_update_task(
+        appointment_id=appointment_id,
+        event_type="payment_required",
+        sender=send_payment_required,
+    )
+
+
 @celery_app.task(name="bookpoint.notifications.payment_failed")
 def notify_payment_failed(appointment_id: int) -> dict[str, str | int]:
     return _execute_status_update_task(
         appointment_id=appointment_id,
         event_type="payment_failed",
         sender=send_payment_failed,
+    )
+
+
+@celery_app.task(name="bookpoint.notifications.booking_auto_canceled_payment_timeout")
+def notify_booking_auto_canceled_payment_timeout(appointment_id: int) -> dict[str, str | int]:
+    return _execute_status_update_task(
+        appointment_id=appointment_id,
+        event_type="booking_auto_canceled_due_to_payment_timeout",
+        sender=send_booking_auto_canceled_payment_timeout,
     )
 
 
@@ -181,6 +204,22 @@ def notify_appointment_reminder(appointment_id: int) -> dict[str, str | int]:
     except Exception:
         db.rollback()
         logger.exception("notification_task_failed event=%s appointment_id=%s", event_type, appointment_id)
+        raise
+    finally:
+        db.close()
+
+
+@celery_app.task(name=PAYMENT_EXPIRATION_TASK_NAME)
+def expire_pending_payments(expiration_minutes: int | None = None) -> dict[str, int]:
+    db = SessionLocal()
+    try:
+        minutes = expiration_minutes if expiration_minutes is not None else settings.payment_pending_expiration_minutes
+        result = PaymentService(db).expire_pending_payments(expiration_minutes=minutes)
+        logger.info("payment_expiration_complete %s", result)
+        return result
+    except Exception:
+        db.rollback()
+        logger.exception("payment_expiration_failed")
         raise
     finally:
         db.close()

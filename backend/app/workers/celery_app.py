@@ -16,7 +16,12 @@ celery_app.conf.update(
             "task": "bookpoint.notifications.schedule_upcoming_reminders",
             "schedule": 300.0,
             "kwargs": {"lookahead_minutes": 60},
-        }
+        },
+        "bookpoint-expire-pending-payments": {
+            "task": "bookpoint.payments.expire_pending",
+            "schedule": float(settings.payment_expiration_check_interval_seconds),
+            "kwargs": {"expiration_minutes": settings.payment_pending_expiration_minutes},
+        },
     },
     task_serializer="json",
     result_serializer="json",

@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.enums import AppointmentStatus, PaymentStatus, PaymentType
 from app.repositories.appointment_repository import AppointmentRepository
 from app.repositories.payment_repository import PaymentRepository
 from app.services.notifications.dispatcher import (
+    enqueue_appointment_cancelled_notification,
+    enqueue_booking_auto_canceled_payment_timeout_notification,
     enqueue_payment_failed_notification,
+    enqueue_payment_required_notification,
     enqueue_payment_succeeded_notification,
 )
 from app.services.payments.mock_provider import MockCheckoutProvider
@@ -40,6 +44,13 @@ class PaymentService:
     def get_latest_payment_for_appointment(self, appointment_id: int):
         return self.payment_repo.get_latest_for_appointment(appointment_id)
 
+    @staticmethod
+    def _pending_expires_at(payment) -> datetime:
+        created_at = payment.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        return created_at + timedelta(minutes=settings.payment_pending_expiration_minutes)
+
     def get_customer_payment_summary(self, appointment) -> dict:
         service = appointment.service
         if service is None or not service.requires_payment:
@@ -51,6 +62,7 @@ class PaymentService:
                 "checkout_url": None,
                 "checkout_session_id": None,
                 "provider_name": None,
+                "expires_at": None,
             }
 
         amount_due_minor = self._required_amount_minor(service)
@@ -65,11 +77,14 @@ class PaymentService:
                 "checkout_url": None,
                 "checkout_session_id": None,
                 "provider_name": None,
+                "expires_at": None,
             }
 
         checkout_url = None
+        expires_at = None
         if payment.status in {PaymentStatus.PENDING, PaymentStatus.REQUIRES_ACTION}:
             checkout_url = payment.provider_checkout_url
+            expires_at = self._pending_expires_at(payment)
         return {
             "payment_required": True,
             "payment_status": payment.status,
@@ -78,6 +93,7 @@ class PaymentService:
             "checkout_url": checkout_url,
             "checkout_session_id": payment.provider_checkout_session_id,
             "provider_name": payment.provider_name,
+            "expires_at": expires_at,
         }
 
     def create_checkout_session_for_appointment(self, appointment, *, provider_name: str = "mock"):
@@ -124,18 +140,30 @@ class PaymentService:
                 status=PaymentStatus(checkout_session["status"]),
             )
             self.db.commit()
+            enqueue_payment_required_notification(appointment.id)
             return payment, checkout_session
         except Exception:
             self.db.rollback()
             raise
 
-    def mark_payment_status(
+    def _cancel_pending_payment_appointment(self, appointment, *, reason_note: str) -> bool:
+        if appointment.status != AppointmentStatus.PENDING_PAYMENT:
+            return False
+        merged_notes = appointment.notes or reason_note
+        self.appointment_repo.update(
+            appointment,
+            auto_commit=False,
+            status=AppointmentStatus.CANCELLED,
+            notes=merged_notes,
+        )
+        return True
+
+    def _resolve_payment_for_status_update(
         self,
         *,
         provider_name: str,
-        status: PaymentStatus,
-        provider_checkout_session_id: str | None = None,
-        provider_payment_intent_id: str | None = None,
+        provider_checkout_session_id: str | None,
+        provider_payment_intent_id: str | None,
     ):
         if provider_checkout_session_id:
             payment = self.payment_repo.get_by_checkout_session_id(provider_checkout_session_id)
@@ -148,9 +176,25 @@ class PaymentService:
             raise LookupError("Payment not found.")
         if payment.provider_name != provider_name:
             raise LookupError("Payment not found.")
+        return payment
+
+    def mark_payment_status(
+        self,
+        *,
+        provider_name: str,
+        status: PaymentStatus,
+        provider_checkout_session_id: str | None = None,
+        provider_payment_intent_id: str | None = None,
+    ):
+        payment = self._resolve_payment_for_status_update(
+            provider_name=provider_name,
+            provider_checkout_session_id=provider_checkout_session_id,
+            provider_payment_intent_id=provider_payment_intent_id,
+        )
 
         previous_status = payment.status
         paid_at = datetime.now(timezone.utc) if status == PaymentStatus.SUCCEEDED else None
+        appointment_was_auto_cancelled = False
 
         try:
             payment = self.payment_repo.update(
@@ -159,16 +203,22 @@ class PaymentService:
                 status=status,
                 paid_at=paid_at,
             )
+            appointment = self.appointment_repo.get_for_update(payment.appointment_id)
+            if appointment is None:
+                raise LookupError("Appointment not found.")
+
             if status == PaymentStatus.SUCCEEDED:
-                appointment = self.appointment_repo.get_for_update(payment.appointment_id)
-                if appointment is None:
-                    raise LookupError("Appointment not found.")
-                if appointment.status == AppointmentStatus.PENDING:
+                if appointment.status in {AppointmentStatus.PENDING_PAYMENT, AppointmentStatus.PENDING}:
                     self.appointment_repo.update(
                         appointment,
                         auto_commit=False,
                         status=AppointmentStatus.CONFIRMED,
                     )
+            elif status in {PaymentStatus.FAILED, PaymentStatus.CANCELED}:
+                appointment_was_auto_cancelled = self._cancel_pending_payment_appointment(
+                    appointment,
+                    reason_note="Auto-cancelled due to unsuccessful payment.",
+                )
             self.db.commit()
         except Exception:
             self.db.rollback()
@@ -177,6 +227,64 @@ class PaymentService:
         if status != previous_status:
             if status == PaymentStatus.SUCCEEDED:
                 enqueue_payment_succeeded_notification(payment.appointment_id)
-            elif status == PaymentStatus.FAILED:
+            elif status in {PaymentStatus.FAILED, PaymentStatus.CANCELED}:
                 enqueue_payment_failed_notification(payment.appointment_id)
+            if appointment_was_auto_cancelled:
+                enqueue_appointment_cancelled_notification(payment.appointment_id)
         return payment
+
+    def expire_pending_payments(
+        self,
+        *,
+        expiration_minutes: int | None = None,
+        now_utc: datetime | None = None,
+    ) -> dict[str, int]:
+        effective_now = now_utc or datetime.now(timezone.utc)
+        minutes = expiration_minutes if expiration_minutes is not None else settings.payment_pending_expiration_minutes
+        cutoff = effective_now - timedelta(minutes=minutes)
+        cutoff_for_query = cutoff
+        if self.db.bind is not None and self.db.bind.dialect.name == "sqlite" and cutoff_for_query.tzinfo is not None:
+            cutoff_for_query = cutoff_for_query.replace(tzinfo=None)
+        checked = 0
+        expired = 0
+        auto_canceled_appointments = 0
+
+        payments = self.payment_repo.list_expired_pending(cutoff_for_query)
+        for stale_payment in payments:
+            checked += 1
+            try:
+                payment = self.payment_repo.get_for_update(stale_payment.id)
+                if payment is None:
+                    continue
+                if payment.status not in {PaymentStatus.PENDING, PaymentStatus.REQUIRES_ACTION}:
+                    continue
+                appointment = self.appointment_repo.get_for_update(payment.appointment_id)
+                if appointment is None:
+                    continue
+
+                self.payment_repo.update(
+                    payment,
+                    auto_commit=False,
+                    status=PaymentStatus.CANCELED,
+                    paid_at=None,
+                )
+                appointment_auto_canceled = self._cancel_pending_payment_appointment(
+                    appointment,
+                    reason_note="Auto-cancelled due to payment timeout.",
+                )
+                self.db.commit()
+
+                expired += 1
+                if appointment_auto_canceled:
+                    auto_canceled_appointments += 1
+                    enqueue_appointment_cancelled_notification(appointment.id)
+                    enqueue_booking_auto_canceled_payment_timeout_notification(appointment.id)
+            except Exception:
+                self.db.rollback()
+                raise
+
+        return {
+            "checked": checked,
+            "expired": expired,
+            "auto_canceled_appointments": auto_canceled_appointments,
+        }

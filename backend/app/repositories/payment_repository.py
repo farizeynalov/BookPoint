@@ -1,6 +1,9 @@
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.enums import PaymentStatus
 from app.models.payment import Payment
 
 
@@ -50,6 +53,17 @@ class PaymentRepository:
             .limit(1)
         )
         return self.db.scalar(stmt)
+
+    def list_expired_pending(self, cutoff_datetime: datetime) -> list[Payment]:
+        stmt = (
+            select(Payment)
+            .where(
+                Payment.status.in_((PaymentStatus.PENDING, PaymentStatus.REQUIRES_ACTION)),
+                Payment.created_at <= cutoff_datetime,
+            )
+            .order_by(Payment.created_at.asc(), Payment.id.asc())
+        )
+        return list(self.db.scalars(stmt))
 
     def list_for_appointment(self, appointment_id: int) -> list[Payment]:
         stmt = (

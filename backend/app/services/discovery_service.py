@@ -306,7 +306,7 @@ class DiscoveryService:
                 service_id=payload.service_id,
                 customer_id=customer.id,
                 start_datetime=scheduled_start_utc,
-                status=AppointmentStatus.PENDING if service.requires_payment else AppointmentStatus.CONFIRMED,
+                status=AppointmentStatus.PENDING_PAYMENT if service.requires_payment else AppointmentStatus.CONFIRMED,
                 booking_channel=BookingChannel.WEB,
                 notes=None,
             )

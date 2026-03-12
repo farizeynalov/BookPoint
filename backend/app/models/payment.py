@@ -23,13 +23,21 @@ class Payment(Base, TimestampMixin):
     provider_checkout_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     provider_checkout_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     status: Mapped[PaymentStatus] = mapped_column(
-        Enum(PaymentStatus, name="payment_status"),
+        Enum(
+            PaymentStatus,
+            name="payment_status",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=PaymentStatus.PENDING,
         index=True,
     )
     payment_type: Mapped[PaymentType] = mapped_column(
-        Enum(PaymentType, name="payment_type"),
+        Enum(
+            PaymentType,
+            name="payment_type",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=PaymentType.FULL,
     )

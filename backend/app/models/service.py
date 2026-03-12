@@ -34,7 +34,11 @@ class Service(Base, TimestampMixin):
     currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     requires_payment: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     payment_type: Mapped[PaymentType] = mapped_column(
-        Enum(PaymentType, name="payment_type"),
+        Enum(
+            PaymentType,
+            name="payment_type",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=PaymentType.FULL,
     )

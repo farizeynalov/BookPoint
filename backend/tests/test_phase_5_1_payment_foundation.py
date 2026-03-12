@@ -244,7 +244,7 @@ def test_booking_paid_full_service_creates_payment_record_and_checkout_session(
     )
     payload = _book_from_context(client, context, suffix="50002")
 
-    assert payload["status"] == AppointmentStatus.PENDING.value
+    assert payload["status"] == AppointmentStatus.PENDING_PAYMENT.value
     payment_payload = payload["payment"]
     assert payment_payload["payment_required"] is True
     assert payment_payload["payment_status"] == PaymentStatus.REQUIRES_ACTION.value
@@ -384,7 +384,7 @@ def test_failed_payment_confirmation_marks_payment_failed_and_triggers_notificat
     assert payment.status == PaymentStatus.FAILED
     appointment = db_session.get(Appointment, booking["appointment_id"])
     assert appointment is not None
-    assert appointment.status == AppointmentStatus.PENDING
+    assert appointment.status == AppointmentStatus.CANCELLED
 
 
 def test_customer_booking_retrieval_includes_safe_payment_summary(client: TestClient, auth_headers: dict[str, str]) -> None:

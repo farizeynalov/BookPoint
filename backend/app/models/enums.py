@@ -26,6 +26,7 @@ class BookingChannel(str, Enum):
 
 class AppointmentStatus(str, Enum):
     PENDING = "pending"
+    PENDING_PAYMENT = "pending_payment"
     CONFIRMED = "confirmed"
     CANCELLED = "cancelled"
     COMPLETED = "completed"

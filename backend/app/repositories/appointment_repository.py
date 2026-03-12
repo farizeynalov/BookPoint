@@ -6,7 +6,11 @@ from sqlalchemy.orm import Session
 from app.models.appointment import Appointment
 from app.models.enums import AppointmentStatus
 
-BLOCKING_STATUSES = (AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED)
+BLOCKING_STATUSES = (
+    AppointmentStatus.PENDING,
+    AppointmentStatus.PENDING_PAYMENT,
+    AppointmentStatus.CONFIRMED,
+)
 
 
 class AppointmentRepository:

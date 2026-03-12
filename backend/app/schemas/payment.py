@@ -21,6 +21,7 @@ class BookingPaymentSummary(ORMModel):
     checkout_url: str | None = None
     checkout_session_id: str | None = None
     provider_name: str | None = None
+    expires_at: datetime | None = None
 
 
 class PaymentConfirmRequest(ORMModel):

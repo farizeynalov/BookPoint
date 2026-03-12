@@ -22,7 +22,11 @@ from app.services.notifications.dispatcher import (
 from app.services.scheduling_service import SchedulingService
 from app.utils.datetime import ensure_aware_utc
 
-RESCHEDULABLE_STATUSES = {AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED}
+RESCHEDULABLE_STATUSES = {
+    AppointmentStatus.PENDING,
+    AppointmentStatus.PENDING_PAYMENT,
+    AppointmentStatus.CONFIRMED,
+}
 
 
 def _is_overlap_constraint_error(exc: IntegrityError) -> bool:

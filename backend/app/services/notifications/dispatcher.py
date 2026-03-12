@@ -7,8 +7,10 @@ logger = logging.getLogger(__name__)
 TASK_APPOINTMENT_CREATED = "bookpoint.notifications.appointment_created"
 TASK_APPOINTMENT_CANCELLED = "bookpoint.notifications.appointment_cancelled"
 TASK_APPOINTMENT_RESCHEDULED = "bookpoint.notifications.appointment_rescheduled"
+TASK_PAYMENT_REQUIRED = "bookpoint.notifications.payment_required"
 TASK_PAYMENT_SUCCEEDED = "bookpoint.notifications.payment_succeeded"
 TASK_PAYMENT_FAILED = "bookpoint.notifications.payment_failed"
+TASK_BOOKING_AUTO_CANCELED_PAYMENT_TIMEOUT = "bookpoint.notifications.booking_auto_canceled_payment_timeout"
 
 
 def _enqueue_notification_task(task_name: str, appointment_id: int) -> bool:
@@ -39,3 +41,11 @@ def enqueue_payment_succeeded_notification(appointment_id: int) -> bool:
 
 def enqueue_payment_failed_notification(appointment_id: int) -> bool:
     return _enqueue_notification_task(TASK_PAYMENT_FAILED, appointment_id)
+
+
+def enqueue_payment_required_notification(appointment_id: int) -> bool:
+    return _enqueue_notification_task(TASK_PAYMENT_REQUIRED, appointment_id)
+
+
+def enqueue_booking_auto_canceled_payment_timeout_notification(appointment_id: int) -> bool:
+    return _enqueue_notification_task(TASK_BOOKING_AUTO_CANCELED_PAYMENT_TIMEOUT, appointment_id)
