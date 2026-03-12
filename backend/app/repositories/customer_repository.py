@@ -1,6 +1,7 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.models.appointment import Appointment
 from app.models.customer import Customer
 from app.utils.phone import normalize_phone_number
 
@@ -22,6 +23,25 @@ class CustomerRepository:
 
     def get(self, customer_id: int) -> Customer | None:
         return self.db.get(Customer, customer_id)
+
+    def get_by_phone_normalized(self, phone_number_normalized: str) -> Customer | None:
+        stmt = select(Customer).where(Customer.phone_number_normalized == phone_number_normalized).limit(1)
+        return self.db.scalar(stmt)
+
+    def list_by_email(self, email: str) -> list[Customer]:
+        stmt = (
+            select(Customer)
+            .where(Customer.email.is_not(None), func.lower(Customer.email) == email.lower())
+            .order_by(Customer.id.asc())
+        )
+        return list(self.db.scalars(stmt))
+
+    def has_appointment_in_organization(self, customer_id: int, organization_id: int) -> bool:
+        stmt = select(Appointment.id).where(
+            Appointment.customer_id == customer_id,
+            Appointment.organization_id == organization_id,
+        )
+        return self.db.scalar(stmt) is not None
 
     def list_customers(self) -> list[Customer]:
         stmt = select(Customer).order_by(Customer.id.asc())

@@ -1,6 +1,7 @@
 from datetime import datetime
+import secrets
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer, Text
+from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -17,6 +18,20 @@ class Appointment(Base, TimestampMixin):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    booking_reference: Mapped[str] = mapped_column(
+        String(24),
+        nullable=False,
+        unique=True,
+        index=True,
+        default=lambda: f"BKP-{secrets.token_hex(4).upper()}",
+    )
+    booking_access_token: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+        unique=True,
+        index=True,
+        default=lambda: secrets.token_urlsafe(32),
+    )
     organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
     location_id: Mapped[int] = mapped_column(
         ForeignKey("organization_locations.id", ondelete="RESTRICT"),

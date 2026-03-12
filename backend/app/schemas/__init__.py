@@ -3,6 +3,22 @@ from app.schemas.appointment import AppointmentCancel, AppointmentCreate, Appoin
 from app.schemas.auth import LoginRequest, TokenResponse, UserRead
 from app.schemas.customer import CustomerCreate, CustomerRead, CustomerUpdate
 from app.schemas.customer_channel_identity import CustomerChannelIdentityCreate, CustomerChannelIdentityRead
+from app.schemas.customer_self_service import (
+    CustomerBookingCancelResponse,
+    CustomerBookingRescheduleRequest,
+    CustomerBookingRescheduleResponse,
+    CustomerBookingSummary,
+)
+from app.schemas.discovery import (
+    DiscoveryBookingConfirmation,
+    DiscoveryBookingCreate,
+    DiscoveryLocationRead,
+    DiscoveryOrganizationRead,
+    DiscoveryProviderRead,
+    DiscoveryServiceRead,
+    DiscoverySlotsQuery,
+    DiscoverySlotRead,
+)
 from app.schemas.organization import OrganizationCreate, OrganizationRead, OrganizationUpdate
 from app.schemas.organization_location import (
     LocationAssignmentCreate,
@@ -50,9 +66,21 @@ __all__ = [
     "AppointmentReschedule",
     "CustomerChannelIdentityCreate",
     "CustomerChannelIdentityRead",
+    "CustomerBookingCancelResponse",
+    "CustomerBookingRescheduleRequest",
+    "CustomerBookingRescheduleResponse",
+    "CustomerBookingSummary",
     "CustomerCreate",
     "CustomerRead",
     "CustomerUpdate",
+    "DiscoveryBookingConfirmation",
+    "DiscoveryBookingCreate",
+    "DiscoveryLocationRead",
+    "DiscoveryOrganizationRead",
+    "DiscoveryProviderRead",
+    "DiscoveryServiceRead",
+    "DiscoverySlotRead",
+    "DiscoverySlotsQuery",
     "LoginRequest",
     "OrganizationCreate",
     "LocationAssignmentCreate",

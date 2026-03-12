@@ -4,6 +4,8 @@ from app.api.routers import (
     admin,
     appointments,
     auth,
+    customer_bookings,
+    discovery,
     customer_identities,
     customers,
     locations,
@@ -19,6 +21,8 @@ from app.api.routers import (
 
 api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
+api_router.include_router(discovery.router, prefix="/discovery", tags=["discovery"])
+api_router.include_router(customer_bookings.router, prefix="/customer/bookings", tags=["customer-bookings"])
 api_router.include_router(organizations.router, prefix="/organizations", tags=["organizations"])
 api_router.include_router(
     locations.organization_locations_router,
