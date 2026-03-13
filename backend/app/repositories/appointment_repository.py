@@ -114,6 +114,28 @@ class AppointmentRepository:
         )
         return list(self.db.scalars(stmt))
 
+    def list_upcoming_for_customer(
+        self,
+        *,
+        customer_id: int,
+        organization_id: int | None = None,
+        now_datetime: datetime,
+        limit: int = 10,
+    ) -> list[Appointment]:
+        stmt = (
+            select(Appointment)
+            .where(
+                Appointment.customer_id == customer_id,
+                Appointment.status.in_(BLOCKING_STATUSES),
+                Appointment.start_datetime >= now_datetime,
+            )
+            .order_by(Appointment.start_datetime.asc())
+            .limit(max(1, min(limit, 50)))
+        )
+        if organization_id is not None:
+            stmt = stmt.where(Appointment.organization_id == organization_id)
+        return list(self.db.scalars(stmt))
+
     def update(self, appointment: Appointment, *, auto_commit: bool = True, **kwargs) -> Appointment:
         for field, value in kwargs.items():
             setattr(appointment, field, value)

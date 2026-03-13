@@ -19,6 +19,7 @@ from app.api.routers import (
     payouts,
     scheduling,
     services,
+    whatsapp,
 )
 from app.core.config import settings
 
@@ -55,5 +56,6 @@ api_router.include_router(provider_time_off.router, prefix="/provider-time-off",
 api_router.include_router(provider_date_overrides.router, prefix="/provider-date-overrides", tags=["provider-date-overrides"])
 api_router.include_router(scheduling.router, prefix="/scheduling", tags=["scheduling"])
 api_router.include_router(appointments.router, prefix="/appointments", tags=["appointments"])
+api_router.include_router(whatsapp.router, prefix="/whatsapp", tags=["whatsapp"])
 if settings.enable_admin_internal_endpoints:
     api_router.include_router(admin.router, prefix="/admin", tags=["admin"])

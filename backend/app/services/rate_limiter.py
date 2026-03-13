@@ -230,6 +230,10 @@ def get_rate_limit_policy(policy_name: str) -> RateLimitPolicy:
             settings.rate_limit_admin_events_limit,
             settings.rate_limit_admin_events_window_seconds,
         ),
+        "whatsapp_inbound": (
+            settings.rate_limit_whatsapp_inbound_limit,
+            settings.rate_limit_whatsapp_inbound_window_seconds,
+        ),
     }
     if policy_name not in policy_map:
         raise KeyError(f"Unknown rate limit policy: {policy_name}")

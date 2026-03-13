@@ -49,3 +49,16 @@ def test_production_rejects_wildcard_cors(monkeypatch) -> None:
     monkeypatch.setenv("CORS_ORIGINS", "*")
     with pytest.raises(ValueError, match="CORS wildcard"):
         Settings(_env_file=None)
+
+
+def test_production_whatsapp_requires_credentials_when_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("SECRET_KEY", "prod-secret-key")
+    monkeypatch.setenv("PAYMENT_WEBHOOK_SECRET", "prod-webhook-secret")
+    monkeypatch.setenv("WHATSAPP_ENABLED", "true")
+    monkeypatch.delenv("WHATSAPP_VERIFY_TOKEN", raising=False)
+    monkeypatch.delenv("WHATSAPP_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("WHATSAPP_PHONE_NUMBER_ID", raising=False)
+    monkeypatch.delenv("WHATSAPP_APP_SECRET", raising=False)
+    with pytest.raises(ValueError, match="WHATSAPP_VERIFY_TOKEN"):
+        Settings(_env_file=None)

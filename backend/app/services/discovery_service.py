@@ -287,7 +287,12 @@ class DiscoveryService:
                 return existing
             raise
 
-    def create_public_booking(self, payload: DiscoveryBookingCreate):
+    def create_public_booking(
+        self,
+        payload: DiscoveryBookingCreate,
+        *,
+        booking_channel: BookingChannel = BookingChannel.WEB,
+    ):
         service = self._validate_booking_entities(payload)
         scheduled_start_utc = ensure_aware_utc(payload.scheduled_start)
         if scheduled_start_utc <= datetime.now(timezone.utc):
@@ -310,7 +315,7 @@ class DiscoveryService:
                 customer_id=customer.id,
                 start_datetime=scheduled_start_utc,
                 status=AppointmentStatus.PENDING_PAYMENT if service.requires_payment else AppointmentStatus.CONFIRMED,
-                booking_channel=BookingChannel.WEB,
+                booking_channel=booking_channel,
                 notes=None,
             ),
             actor_type="customer",

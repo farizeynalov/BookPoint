@@ -132,6 +132,12 @@ API:
 - health check: `GET /health`
 - OpenAPI docs: `http://localhost:8000/docs`
 
+WhatsApp local setup:
+
+- `.env` includes `WHATSAPP_*` keys for webhook flow testing.
+- Keep `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, and `WHATSAPP_APP_SECRET` empty until real Meta values are available.
+- The app can still start locally; outbound WhatsApp sends will fail with a clear configuration error until credentials are set.
+
 ## Migrations
 
 From `backend/`:

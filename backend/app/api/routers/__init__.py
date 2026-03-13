@@ -17,6 +17,7 @@ from app.api.routers import (
     providers,
     scheduling,
     services,
+    whatsapp,
 )
 
 __all__ = [
@@ -38,4 +39,5 @@ __all__ = [
     "providers",
     "scheduling",
     "services",
+    "whatsapp",
 ]

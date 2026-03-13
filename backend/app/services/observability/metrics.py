@@ -21,6 +21,13 @@ DEFAULT_COUNTERS = (
     "worker_failures_total",
     "rate_limit_hits_total",
     "rate_limit_allowed_total",
+    "whatsapp_webhook_received_total",
+    "whatsapp_outbound_sent_total",
+    "whatsapp_outbound_failed_total",
+    "whatsapp_conversation_started_total",
+    "whatsapp_bookings_completed_total",
+    "whatsapp_cancellations_completed_total",
+    "whatsapp_reschedules_completed_total",
 )
 
 

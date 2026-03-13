@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, JSON, String, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, JSON, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -9,6 +9,14 @@ from app.models.enums import ChannelType, MessageDirection
 
 class MessageLog(Base):
     __tablename__ = "message_logs"
+    __table_args__ = (
+        UniqueConstraint(
+            "channel",
+            "direction",
+            "external_message_id",
+            name="uq_message_logs_channel_direction_external",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True)

@@ -41,6 +41,16 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
     payment_webhooks_enabled: bool = True
     payment_webhook_secret: str | None = None
+    whatsapp_enabled: bool = False
+    whatsapp_verify_token: str | None = None
+    whatsapp_access_token: str | None = None
+    whatsapp_phone_number_id: str | None = None
+    whatsapp_app_secret: str | None = None
+    whatsapp_cloud_api_base_url: str = "https://graph.facebook.com"
+    whatsapp_cloud_api_version: str = "v21.0"
+    whatsapp_outbound_timeout_seconds: float = 5.0
+    whatsapp_outbound_max_retries: int = 2
+    whatsapp_outbound_retry_backoff_seconds: float = 0.2
     payment_pending_expiration_minutes: int = 15
     payment_expiration_check_interval_seconds: int = 60
     payout_processing_interval_seconds: int = 300
@@ -73,6 +83,8 @@ class Settings(BaseSettings):
     rate_limit_manual_refund_window_seconds: int = 60
     rate_limit_admin_events_limit: int = 30
     rate_limit_admin_events_window_seconds: int = 60
+    rate_limit_whatsapp_inbound_limit: int = 30
+    rate_limit_whatsapp_inbound_window_seconds: int = 60
 
     database_url: str = "postgresql+psycopg://bookpoint:bookpoint@db:5432/bookpoint"
     redis_url: str = "redis://redis:6379/0"
@@ -155,6 +167,17 @@ class Settings(BaseSettings):
                 raise ValueError("DEBUG mode must be disabled in production.")
             if self.payment_webhooks_enabled and not (self.payment_webhook_secret and self.payment_webhook_secret.strip()):
                 raise ValueError("PAYMENT_WEBHOOK_SECRET is required when payment webhooks are enabled in production.")
+            if self.whatsapp_enabled:
+                if not (self.whatsapp_verify_token and self.whatsapp_verify_token.strip()):
+                    raise ValueError("WHATSAPP_VERIFY_TOKEN is required when WhatsApp integration is enabled in production.")
+                if not (self.whatsapp_access_token and self.whatsapp_access_token.strip()):
+                    raise ValueError("WHATSAPP_ACCESS_TOKEN is required when WhatsApp integration is enabled in production.")
+                if not (self.whatsapp_phone_number_id and self.whatsapp_phone_number_id.strip()):
+                    raise ValueError(
+                        "WHATSAPP_PHONE_NUMBER_ID is required when WhatsApp integration is enabled in production."
+                    )
+                if not (self.whatsapp_app_secret and self.whatsapp_app_secret.strip()):
+                    raise ValueError("WHATSAPP_APP_SECRET is required when WhatsApp integration is enabled in production.")
             if not self.enable_rate_limiting:
                 raise ValueError("ENABLE_RATE_LIMITING must remain enabled in production.")
             if self.enable_docs:
@@ -188,6 +211,8 @@ class Settings(BaseSettings):
             self.rate_limit_manual_refund_window_seconds,
             self.rate_limit_admin_events_limit,
             self.rate_limit_admin_events_window_seconds,
+            self.rate_limit_whatsapp_inbound_limit,
+            self.rate_limit_whatsapp_inbound_window_seconds,
         )
         if any(value <= 0 for value in integer_fields):
             raise ValueError("Rate limit limits and windows must be positive integers.")
@@ -202,9 +227,17 @@ class Settings(BaseSettings):
             self.ops_cleanup_interval_seconds,
             self.domain_events_retention_days,
             self.idempotency_keys_retention_days,
+            self.whatsapp_outbound_timeout_seconds,
+            self.whatsapp_outbound_retry_backoff_seconds,
         )
         if any(value <= 0 for value in numeric_fields):
             raise ValueError("Runtime scheduling and retention values must be positive integers.")
+        if self.whatsapp_outbound_max_retries < 0:
+            raise ValueError("WHATSAPP_OUTBOUND_MAX_RETRIES must be zero or a positive integer.")
+        if not self.whatsapp_cloud_api_base_url.strip():
+            raise ValueError("WHATSAPP_CLOUD_API_BASE_URL must be non-empty.")
+        if not self.whatsapp_cloud_api_version.strip():
+            raise ValueError("WHATSAPP_CLOUD_API_VERSION must be non-empty.")
         if not self.payout_processing_provider_name.strip():
             raise ValueError("PAYOUT_PROCESSING_PROVIDER_NAME must be non-empty.")
 
