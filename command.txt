@@ -1,4 +1,0 @@
-docker compose up --build
-alembic upgrade head
-python -m scripts.seed
-pytest

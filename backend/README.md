@@ -1,246 +1,271 @@
-# BookPoint Backend (Phase 1)
+# BookPoint
 
-BookPoint is a multi-channel appointment-booking platform for appointment-based professionals and businesses (clinics, salons, barbers, consultants, tutors, etc.).
+A production-grade, multi-tenant appointment booking backend built with Python 3.12 and FastAPI. BookPoint powers service businesses — salons, clinics, consultants — with a full scheduling engine, payment processing, commissions, payouts, and a conversational **WhatsApp Cloud API** booking channel.
 
-In this phase, the backend foundation is implemented from zero with a single shared API and single shared database.
+---
 
-## Core Architecture
+## Features
 
-BookPoint is intentionally **channel-agnostic**:
+### Multi-Tenant Organization System
+- Organizations with multiple locations, providers, and services
+- Role-based membership: `OWNER`, `ADMIN`, `PROVIDER`, `STAFF`
+- Platform admin fast-path with cross-tenant access
+- Per-org timezone support via `ZoneInfo`
 
-- WhatsApp bot
-- Telegram bot
-- Website
-- Mobile app
-- Provider dashboard
-- Admin dashboard
+### Scheduling Engine
+- Buffer-aware slot generation (`buffer_before_minutes` / `buffer_after_minutes` per service)
+- Weekly availability rules, date overrides, and time-off blocks per provider
+- Timezone-correct slot listing up to 31 days ahead
+- Conflict detection across all active appointments
 
-All clients must use the same backend and same database so appointment state stays synchronized.
+### Appointment Lifecycle
+- Public discovery and booking via unauthenticated endpoints
+- Full status machine: `PENDING` → `CONFIRMED` → `COMPLETED` / `CANCELLED`
+- `PENDING_PAYMENT` state with auto-expiry via Celery beat (configurable window)
+- Booking reference (`BKP-XXXXXX`) and per-appointment access token for customer self-service
 
-The backend is the **single source of truth**.
+### Payments, Refunds & Payouts
+- Deposit and full-prepayment models with per-service `payment_type`
+- Three cancellation/refund policies: `FLEXIBLE` (100%), `MODERATE` (deposit-aware), `STRICT` (window-based 50%/0%)
+- Per-org commission model: `FIXED` or `PERCENTAGE` (stored as `Numeric(5,4)`)
+- Provider earnings tracked per payment; payout failure resets earnings to `READY_FOR_PAYOUT`
+- Post-payout refund adjustments netted against next payout
+- All amounts in minor currency units; `ZERO_DECIMAL_CURRENCIES` handled (JPY, KRW, etc.)
+- Mock payment/refund/payout provider included; designed as drop-in slot for Stripe or Adyen
 
-## Phase 1 Scope
+### WhatsApp Conversational Booking
+- End-to-end booking flow via WhatsApp Cloud API (Meta Graph API v23.0)
+- Stateful conversation engine: organization → location → service → provider → date → slot → confirm
+- Customers can view upcoming bookings, cancel, and reschedule entirely over WhatsApp
+- HMAC SHA256 webhook validation (`X-Hub-Signature-256`)
+- Exponential-backoff retry on 5xx from Meta
+- Message deduplication at DB level via unique index on `(channel, direction, external_message_id)`
+- Per-user rate limiting with domain event logging on denial
 
-Implemented now:
+### Production Hardening
+- **JWT authentication** — HS256 bearer tokens via `python-jose`, Argon2 password hashing via `pwdlib`
+- **Idempotency** — SHA256 request hash stored in DB; replays with `X-Idempotent-Replayed: true`
+- **Request ID correlation** — `X-Request-ID` middleware injected into all log records via `ContextVar`
+- **Rate limiting** — 11 named policies (memory or Redis backend); configurable per endpoint
+- **Prometheus metrics** — 25 counters at `/metrics` (bookings, payments, WhatsApp flows, rate-limit hits, etc.)
+- **Domain event audit log** — every state transition recorded; payload sanitization redacts tokens/secrets/passwords
+- **Operational cleanup** — Celery beat deletes expired domain events and idempotency keys per retention config
+- **Runtime config validation** — `scripts/check_runtime.py` refuses unsafe production defaults
 
-- FastAPI service scaffold with modular structure
-- SQLAlchemy 2.x models (normalized schema)
-- Alembic migration setup + initial migration
-- JWT login foundation for dashboard users
-- Organization/member/provider/service/customer domain
-- Provider-owned service catalog foundation (`duration`, optional `price`/`currency`, booking buffers)
-- Buffer-aware scheduling and overlap validation (`buffer_before`/`buffer_after` applied to blocked intervals)
-- Customer channel identity mapping
-- Provider availability + time-off foundation
-- Provider schedule refinement: split daily windows, date-specific overrides, and time-off-aware slot filtering
-- Appointment create/list/cancel/reschedule
-- Scheduling slot generation service foundation
-- Conversation state / message log / notification data foundations
-- Redis + Celery worker placeholders
-- Docker + docker-compose local setup
-- Pytest scaffold + initial coherent tests
-- Seed script with demo data
+### Background Workers (Celery + Redis)
+- Payment expiry checker (default every 60s)
+- Appointment reminder dispatcher (default 60-min lookahead)
+- Payout processor (default every 300s)
+- Operational cleanup (default every 3600s)
 
-Intentionally deferred:
+---
 
-- WhatsApp/Telegram integrations
-- Web/mobile frontend apps
-- Billing/subscription
-- Real notification delivery channels
-- AI chatbot logic
-- Production cloud deployment hardening
+## Tech Stack
 
-## Datetime and Timezone Strategy
+| Layer | Package |
+|---|---|
+| Language | Python 3.12+ |
+| Web framework | FastAPI 0.115+ |
+| ASGI server | Uvicorn |
+| ORM | SQLAlchemy 2.0 |
+| Migrations | Alembic |
+| Database | PostgreSQL 16 |
+| Cache / broker | Redis 7 |
+| Task queue | Celery 5.4+ |
+| JWT | python-jose[cryptography] |
+| Password hashing | pwdlib[argon2] |
+| Config | pydantic-settings |
+| Messaging | WhatsApp Business Cloud API |
+| Testing | pytest, pytest-asyncio |
 
-- Database columns use timezone-aware datetimes (`TIMESTAMP WITH TIME ZONE` in PostgreSQL).
-- Appointment, provider time-off, and notification schedules are stored in UTC.
-- `provider_availability` stores recurring weekday + local time windows in the provider organization timezone.
-- Slot generation converts local organization windows to UTC and subtracts:
-  - provider time-off intervals
-  - existing blocking appointments (`pending`, `confirmed`)
-- Default operating timezone is `Asia/Baku`.
+---
 
-## Overlap Protection Strategy (Phase 1)
+## Project Structure
 
-- Appointment create/reschedule now runs with explicit transaction boundaries (`commit`/`rollback` in service layer).
-- Provider rows are locked with `SELECT ... FOR UPDATE` before overlap checks to reduce race-condition risk.
-- PostgreSQL migration includes exclusion constraint `ex_appointments_provider_no_overlap`:
-  - `EXCLUDE USING gist (provider_id WITH =, tstzrange(start_datetime, end_datetime, '[)') WITH &&)`
-  - filtered to blocking statuses (`PENDING`, `CONFIRMED`)
-- Application-level overlap and slot checks are still retained for clearer API errors.
-- New appointments are restricted to `pending` or `confirmed` statuses.
-- Reschedule is allowed only for `pending`/`confirmed` and preserves the current status.
-
-## Availability Overlap Rule
-
-- Exact-duplicate availability windows are blocked by DB uniqueness.
-- Additional service-layer rule blocks overlapping recurring windows for the same provider + weekday.
-- This keeps slot generation deterministic and avoids ambiguous working-hour definitions.
-
-## Customer Identity and Dedup Strategy
-
-- Customer records are deduplicated by `phone_number_normalized` (unique).
-- Incoming phone values are normalized to E.164-like `+<digits>` form before insert/update.
-- `customer_channel_identities` enforces:
-  - unique `(channel, external_user_id)` globally
-  - unique `(customer_id, channel)` per customer
-- This reduces duplicate-customer risk while keeping Phase 1 model simple.
-
-## Repository Structure
-
-```text
+```
 backend/
-  app/
-    api/routers/
-    core/
-    db/
-    dependencies/
-    models/
-    repositories/
-    schemas/
-    services/
-    utils/
-    workers/
-  alembic/
-    versions/
-  scripts/
-  tests/
-  Dockerfile
-  docker-compose.yml
-  pyproject.toml
-  .env.example
-  README.md
+├── app/
+│   ├── main.py                     # App factory, middlewares, exception handlers
+│   ├── api/
+│   │   └── routers/                # 18 router modules (auth, orgs, providers, services,
+│   │                               #   appointments, payments, payouts, discovery,
+│   │                               #   scheduling, customers, whatsapp, admin, ...)
+│   ├── core/                       # Config, security, logging, request-ID, health checks
+│   ├── db/                         # SQLAlchemy engine, session, Alembic base
+│   ├── dependencies/               # Auth guards, rate-limit enforcement
+│   ├── middleware/                  # Request-ID ingress + sanitization
+│   ├── models/                     # 25 SQLAlchemy models
+│   ├── repositories/               # 24 data-access classes
+│   ├── schemas/                    # 20 Pydantic v2 DTOs
+│   ├── services/
+│   │   ├── appointment_service.py
+│   │   ├── scheduling_service.py
+│   │   ├── discovery_service.py
+│   │   ├── payments/               # payment, earning, refund, payout, mock provider
+│   │   ├── whatsapp/               # gateway, parser, state-machine service
+│   │   ├── notifications/          # Celery dispatcher + placeholder service
+│   │   ├── observability/          # Domain events + Prometheus counters
+│   │   └── operations/             # Cleanup + migration status
+│   └── utils/                      # Currency, datetime, phone, slug helpers
+├── alembic/
+│   └── versions/                   # 14 migrations
+├── scripts/                        # seed.py, check_runtime.py, DB backup/restore (.sh + .ps1)
+├── tests/                          # 30 test files, 221 tests
+├── Dockerfile
+├── docker-compose.yml              # api + worker + beat + postgres:16 + redis:7
+└── pyproject.toml
 ```
 
-## Local Run (Docker)
+---
 
-1. Copy env file:
+## Getting Started
+
+### Prerequisites
+- Python 3.12+
+- PostgreSQL 16
+- Redis 7
+- WhatsApp Business Cloud API credentials (optional — disable with `WHATSAPP_ENABLED=false`)
+
+### Installation
 
 ```bash
-cp .env.example .env
+git clone https://github.com/farizeynalov/BookPoint.git
+cd BookPoint/backend
+
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+pip install -e .
 ```
 
-2. Start services:
+### Configuration
 
-```bash
-docker compose up --build
+Copy `.env.example` to `.env` and fill in the required values:
+
+```env
+# Core
+APP_ENV=development
+SECRET_KEY=your-secret-key
+DATABASE_URL=postgresql+psycopg://user:password@localhost:5432/bookpoint
+REDIS_URL=redis://localhost:6379/0
+
+# JWT
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+
+# WhatsApp (set WHATSAPP_ENABLED=false to skip)
+WHATSAPP_ENABLED=true
+WHATSAPP_VERIFY_TOKEN=your-verify-token
+WHATSAPP_ACCESS_TOKEN=your-access-token
+WHATSAPP_PHONE_NUMBER_ID=your-phone-number-id
+WHATSAPP_APP_SECRET=your-app-secret
+
+# Celery
+CELERY_BROKER_URL=redis://localhost:6379/1
+CELERY_RESULT_BACKEND=redis://localhost:6379/2
 ```
 
-API:
+See `app/core/config.py` for the full list of 50+ options including rate-limit policies, payment settings, retention periods, and feature flags.
 
-- `http://localhost:8000`
-- health check: `GET /health`
-- OpenAPI docs: `http://localhost:8000/docs`
-
-WhatsApp local setup:
-
-- `.env` includes `WHATSAPP_*` keys for webhook flow testing.
-- Keep `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, and `WHATSAPP_APP_SECRET` empty until real Meta values are available.
-- The app can still start locally; outbound WhatsApp sends will fail with a clear configuration error until credentials are set.
-
-## Migrations
-
-From `backend/`:
+### Run Migrations
 
 ```bash
 alembic upgrade head
 ```
 
-Create a new migration:
+### Start the API
 
 ```bash
-alembic revision -m "your message"
+uvicorn app.main:app --reload
 ```
 
-## Seed Data
+Swagger docs at `http://localhost:8000/docs` (requires `ENABLE_DOCS=true`).
 
-From `backend/`:
+### Start Workers
 
 ```bash
-python -m scripts.seed
+# Background task worker
+celery -A app.workers.celery_app:celery_app worker
+
+# Scheduled tasks (payment expiry, reminders, payouts, cleanup)
+celery -A app.workers.celery_app:celery_app beat
 ```
 
-Seed includes:
+### Docker (all services)
 
-- platform admin user
-- demo organizations
-- membership records
-- sample providers/services/customers
-- sample channel identity
-- availability block
-- sample appointment
+```bash
+docker-compose up --build
+```
 
-Demo credentials:
+Starts: API, Celery worker, Celery beat, PostgreSQL 16, Redis 7.
 
-- `admin@bookpoint.local / admin123`
-- `owner@demo.local / owner123`
+---
 
-## Tests
-
-From `backend/`:
+## Running Tests
 
 ```bash
 pytest
 ```
 
-## Operations Helpers (Phase 6.4)
+221 tests across 30 files. Uses SQLite in-memory — no external services required.
 
-Runtime posture:
+---
+
+## API Overview
+
+All routes under `/api/v1`.
+
+| Group | Notable Endpoints |
+|---|---|
+| Auth | `POST /auth/login`, `GET /auth/me` |
+| Discovery (public) | Org/location/service/provider listing, slot availability, `POST /discovery/bookings` |
+| Customer self-service | Token-gated booking view, cancel, reschedule (`X-Booking-Token` header) |
+| Organizations | CRUD + member management |
+| Locations | CRUD + provider/service assignment per location |
+| Providers | CRUD + activate/deactivate + earnings + availability/overrides/time-off |
+| Services | CRUD + provider assignments |
+| Appointments | CRUD + cancel + reschedule |
+| Payments | Webhook confirm + manual refund |
+| Payouts | Create payout per provider |
+| WhatsApp | Webhook verification (`GET`) + inbound message handler (`POST`) |
+| Admin | Ping, stats, readiness, domain event log |
+| Health | `/health/live`, `/health/ready`, `/health` |
+| Metrics | `/metrics` — Prometheus text format |
+
+---
+
+## WhatsApp Booking Flow
+
+Customers book entirely over WhatsApp with no app or login required:
+
+```
+"hi" / "hello"
+  → Select organization
+  → Select location         (skipped if only one)
+  → Select service
+  → Select provider
+  → Select date             (next 7 days)
+  → Select time slot
+  → Confirm booking
+  → Receive booking reference (e.g. BKP-A1B2C3)
+
+Type "menu" at any point to return to the main menu.
+Select "My Bookings" to view, cancel, or reschedule upcoming appointments.
+```
+
+---
+
+## Seed Data
 
 ```bash
-python -m scripts.check_runtime
+python scripts/seed.py
 ```
 
-Run retention cleanup once:
+Creates demo organizations, providers, services, and users for local development.
 
-```bash
-python -m scripts.run_cleanup_once
-```
+---
 
-Backup / restore helpers:
+## Author
 
-```bash
-./scripts/backup_db.sh [optional-output-file.sql]
-./scripts/restore_db.sh <backup-file.sql>
-```
-
-PowerShell equivalents:
-
-```powershell
-./scripts/backup_db.ps1 [-OutputPath backups\bookpoint.sql]
-./scripts/restore_db.ps1 -InputPath backups\bookpoint.sql
-```
-
-Initial tests cover:
-
-- auth login/me
-- organization creation
-- provider creation
-- service creation
-- availability creation
-- availability overlap rejection
-- duration/price validation
-- slot generation
-- appointment creation
-- overlap prevention
-- reschedule status behavior
-- customer phone deduplication (normalized)
-- customer channel identity linking
-
-## API Surface (Phase 1)
-
-- `auth`: login, current user
-- `organizations`: create/list/get/update
-- `organization-members`: add/list/update/deactivate
-- `providers`: create/list/get/update/activate/deactivate
-- `services`: create/list/get/update/activate/deactivate
-  - provider-scoped management: `POST /providers/{provider_id}/services`, `GET /providers/{provider_id}/services`
-  - direct service management: `GET /services/{service_id}`, `PATCH /services/{service_id}`, `DELETE /services/{service_id}`
-- `customers`: create/list/get/update
-- `customer-identities`: create/list
-- `provider-availability`: create/list/update/delete
-- `provider-time-off`: create/list/update/delete
-- `provider-date-overrides`: create/list/update/delete
-- `scheduling`: provider slots by date range
-- `appointments`: create/list/get/cancel/reschedule
-- `admin`: minimal admin-only placeholder endpoints
+**Fariz Zeynalov**
+[LinkedIn](https://www.linkedin.com/in/farizeynalov/) · [GitHub](https://github.com/farizeynalov)
